@@ -1,0 +1,109 @@
+---
+title: "heatmap"
+author: "Aleah Wong"
+date: '2024-02-28'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(tidyr)
+```
+
+```{r}
+#import FCB scores:
+
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2")
+heatmapdata <- read.csv("Heatmap_FCB_scores.csv")
+
+heatmapdata <- heatmapdata[, c(1:3, 6:8)]
+
+heatmapdata$f <- as.numeric(heatmapdata$f)
+heatmapdata$c <- as.numeric(heatmapdata$c)
+heatmapdata$b <- as.numeric(heatmapdata$b)
+
+# heatmapdata$f <- as.character(heatmapdata$f)
+# heatmapdata$c <- as.character(heatmapdata$c)
+# heatmapdata$b <- as.character(heatmapdata$b)
+
+#make long:
+heatmapdata <- pivot_longer(heatmapdata, cols = -c("species", "category", "common_name"), 
+                                names_to = "index", values_to = "score")
+
+#plot
+ggplot(heatmapdata, aes(y= index, x = species, fill= score)) + 
+  geom_raster()+
+  scale_y_discrete(limits = c('b', 'c', 'f'), labels = c("Biodiversity", "Climate", "Food"))+
+  facet_grid(~ category, switch = "x", scales = "free_x", space = "free_x")+ 
+  theme(axis.text.x = element_text(size = 5, angle = 90))+
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank())+
+  scale_fill_viridis_c(option = "magma")
+
+----------------------------------------------------------------------------------
+
+```
+
+```{r}
+#only plot species contributing more than 5% to the taxonomic group's production
+```
+
+
+```{r}
+#plot taxonomic groups separately:
+crustaceans <- filter(heatmapdata, category == "crustacean")
+ggplot(crustaceans, aes(x= index, y = species, fill= score)) + 
+  geom_raster()+
+  scale_x_discrete(limits = level_order, labels = c("Food", "Climate", "Biodiversity"))+ #put in F, C, B order
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank())+
+  labs(fill="Score")+
+  scale_fill_viridis_c(option = "magma")
+
+#put in an order that makes sense visually
+#create uniform scale for all taxonomic groups, choose a better gradient
+#select just a few species per taxonomic group? Or put in order from highest to lowest percentage
+
+algae <- filter(heatmapdata, category == "algae")
+ggplot(algae, aes(x= index, y = species, fill= score)) + 
+  geom_raster()+
+  scale_x_discrete(limits = level_order, labels = c("Food", "Climate", "Biodiversity"))+ #put in F, C, B order
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank())+
+  labs(fill="Score")+
+  scale_fill_distiller(palette = "Yl")
+
+
+p+ scale_colour_distiller(palette = "YlOrRd")
+
+# RColorBrewer::display.brewer.all()
+
+molluscs <- filter(heatmapdata, category == "mollusc")
+ggplot(molluscs, aes(x= index, y = species, fill= score)) + 
+  geom_raster()+
+  scale_x_discrete(limits = level_order, labels = c("Food", "Climate", "Biodiversity"))+ #put in F, C, B order
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank())+
+  labs(fill="Score")+
+  scale_fill_viridis(discrete == FALSE)
+
+finfish <- filter(heatmapdata, category == "finfish_inland" | category =="finfish_marine")
+ggplot(finfish, aes(x= index, y = species, fill= score)) + 
+  geom_raster()+
+  scale_x_discrete(limits = level_order, labels = c("Food", "Climate", "Biodiversity"))+ #put in F, C, B order
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank())+
+  labs(fill="Score")
+
+#could put % of taxonomic group production in each box--overlay numbers?
+
+--------------------------
+
+#create color gradient with 4 colors, because the score range is around 40 points
+erupt + scale_fill_gradientn(colours = terrain.colors(7))
+```
+
