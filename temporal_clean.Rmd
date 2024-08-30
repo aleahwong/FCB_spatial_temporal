@@ -1,0 +1,2817 @@
+---
+title: "temporal_clean"
+author: "Aleah Wong"
+date: '2024-08-29'
+output: html_document
+---
+
+```{r}
+rm(list = ls())
+.rs.restartR()
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+############################################################
+Steps 1-4 are stored in the dataprep file
+1. Calculate annual production totals for each species (data saved/provided)
+2. Clean species names and prepare dataset (data saved/provided)
+3. Graphing production (don't need to run steps 1-2)
+4. Calculating production by taxa--use production values to weight FCB scores by taxonomic category
+-----------------------------------------------
+5. Weight F scores by production
+6. Weight C scores by production
+7. Weight B scores by production
+8. Graphing weighted FCB scores together 
+9. FCB Correlations over time
+10. Stats tests?
+############################################################
+
+###STEP 5: Weight food security scores by production ###
+```{r}
+#checking the difference between these datasets 
+
+# prodbytaxa_alpha <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prodbytaxa_alphab.csv") 
+# prodbytaxa_clean <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prodbytaxa_clean.csv") #has the category column
+```
+
+```{r Loading in data}
+
+speciesdata <- read.csv("/Users/aleahw/Documents/Master's!!/Fuzzy/FCB_scores_2024.csv") #FCB scores for each species
+speciesdata <- speciesdata[, c(2:12)] #remove extra first column
+speciesdata <- speciesdata[order(speciesdata$species), ] #put in alphabetical order
+speciesdata <- speciesdata[!speciesdata$species == "Eucheuma cottonii",] #remove E. Cottonii, as it is a duplicate
+
+weighting_totals <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prodbytaxa_forweighting.csv") #annual production by taxonomic group
+weighting_totals <- weighting_totals[, c(2:74)] #remove extra first column
+
+production_data <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prodbytaxa_clean.csv") #annual production by species
+production_data <- production_data[, c(2:75)] #remove extra first column
+
+#load in this dataset to use as an empty frame, just species and year columns
+frame <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prodbytaxa_alphab.csv")
+frame <- frame[, c(2:74)] #remove extra column
+```
+
+```{r FOOD SECURITY WEIGHTED BY ALL PRODUCTION}
+#calculate index scores for each species weighted by production of ALL 55 species
+
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+#loop through each species and multiply f score by (production of that species/production of all species)
+#cat_totals (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+for (i in 1:nrow(speciesdata)){ #for each species
+  print(speciesdata$species[i])
+  f_score <- speciesdata$f[i] #get the score, CHANGE FOR B AND C
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[1, b-1]) #weight by production of ALL species
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[57, i] <- a
+}
+
+new_frame[57, 1] <- "Weighted Index" #name the newest row
+weighted_indexes <- new_frame[57, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes <- pivot_longer(weighted_indexes, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes <- weighted_indexes[order(weighted_indexes$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  print(weighted_indexes$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#SAVE this data to graph FCB together in step 8
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Fweightedby_all.csv")
+# write.csv(weighted_indexes,file=NAME)
+```
+
+```{r FOOD SECURITY WEIGHTED BY FINFISH}
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+#loop through each FINFISH species and multiply f score by (production of that species/production of all species)
+#cat_totals (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+speciesdata2 <- filter(speciesdata, category == "finfish_inland" | category =="finfish_marine") #filter out just the finfish
+
+production_data2 <- filter(production_data, category =="finfish_inland"| category =="finfish_marine")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$f[i] #get the score #CHANGE THIS FOR B AND C
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[2, b-1]) #weight by production of finfish
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2] #include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[57, i] <- a
+}
+
+new_frame[57, 1] <- "Weighted Index" #name the newest row
+weighted_indexes1 <- new_frame[57, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes1 <- pivot_longer(weighted_indexes1, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes1 <- weighted_indexes1[order(weighted_indexes1$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes1)) {
+  print(weighted_indexes1$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes1$Year[i] <- year_labs[i]
+}
+
+weighted_indexes1$Year <- as.numeric(weighted_indexes1$Year) #make years numeric
+```
+
+```{r FOOD SECURITY WEIGHTED BY ALGAE}
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+#loop through each ALGAE species and multiply f score by (production of that species/production of all species)
+#production_data (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+speciesdata2 <- filter(speciesdata, category == "algae") #filter out just the algae
+
+production_data2 <- filter(production_data, category =="algae")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$f[i] #get the score #CHANGE THIS FOR B AND C
+
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[4, b-1]) #weight by production of algae, row 4
+
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  }
+
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes2 <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes2 <- pivot_longer(weighted_indexes2, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes2 <- weighted_indexes2[order(weighted_indexes2$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes2)) {
+  print(weighted_indexes2$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes2$Year[i] <- year_labs[i]
+}
+
+weighted_indexes2$Year <- as.numeric(weighted_indexes2$Year) #make years numeric
+```
+
+```{r FOOD SECURITY WEIGHTED BY CRUSTACEANS and MOLLUSCS}
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "crustacean")
+
+production_data2 <- filter(production_data, category == "crustacean")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$f[i] #get the f score
+
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[5, b-1]) #weight by production of crustaceans, row 5
+
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  }
+
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes3 <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes3 <- pivot_longer(weighted_indexes3, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes3 <- weighted_indexes3[order(weighted_indexes3$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes3)) {
+  print(weighted_indexes3$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes3$Year[i] <- year_labs[i]
+}
+
+weighted_indexes3$Year <- as.numeric(weighted_indexes3$Year) #make years numeric
+----------------------------------------------------------------------------------------------------
+#MOLLUSCS
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "mollusc")
+
+production_data2 <- filter(production_data, category == "mollusc")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$f[i] #get the f score
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[6, b-1]) #weight by production of molluscs, row 6
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes4 <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes4 <- pivot_longer(weighted_indexes4, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes4 <- weighted_indexes4[order(weighted_indexes4$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes4)) {
+  print(weighted_indexes4$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes4$Year[i] <- year_labs[i]
+}
+
+weighted_indexes4$Year <- as.numeric(weighted_indexes4$Year) #make years numeric
+```
+
+```{r Graphing food security index over time with all taxa weightings}
+
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
+
+#weighted_indexes = weighted by all
+#need to add identifier column
+weighted_indexes$weighted_by <- "All"
+
+#weighted_indexes1 = weighted by finfish
+weighted_indexes1$weighted_by <- "Finfish"
+
+#weighted_indexes2 = weighted by algae
+weighted_indexes2$weighted_by <- "Algae"
+
+#weighted_indexes3 = weighted by crustaceans
+weighted_indexes3$weighted_by <- "Crustaceans"
+
+#weighted_indexes4 = weighted by molluscs
+weighted_indexes4$weighted_by <- "Molluscs"
+
+#put into one dataframe, all stacked up
+merge <- rbind(weighted_indexes, weighted_indexes1)
+merge <- rbind(merge, weighted_indexes2)
+merge <- rbind(merge, weighted_indexes3)
+merge <- rbind(merge, weighted_indexes4)
+
+#save this data
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/weighted_Fscores.csv")
+write.csv(merge,file=NAME)
+
+#graph
+plot <- ggplot(merge, aes(x=Year, y=Score, color = weighted_by)) +geom_line(size =1)+
+  labs(y = "Mean Food Security Index", title = "Food Security Potential of Aquaculture")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Weighted By", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))+
+    ylim(30,65)
+
+#SAVE
+# ggsave("F_weighted_combined830.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+
+```{r}
+#magnitude of F, C and B indices by taxonomic group in three time periods
+# merge %>%
+#   group_by(weighted_by) %>%
+#   summarise(min = min(Score), max = max(Score))
+```
+
+```{r Graphing means}
+
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
+
+#modify dataset: create three time periods --> change this for C and B too
+scores_3_periods <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/weighted_Fscores.csv")
+scores_3_periods <- scores_3_periods[, c(2:4)] #remove extra column
+
+#modify dataset: create three time periods
+# scores_3_periods <- merge
+
+scores_3_periods$Year[scores_3_periods$Year >= 1950 & scores_3_periods$Year <= 1980] <- "1950-1980"
+scores_3_periods$Year[scores_3_periods$Year >= 1981 & scores_3_periods$Year <= 2000] <- "1981-2000"
+scores_3_periods$Year[scores_3_periods$Year >= 2001 & scores_3_periods$Year <= 2021] <- "2001-2021"
+
+plot <- ggplot(scores_3_periods, aes(x = Year, y=Score, color = weighted_by))+ geom_boxplot()+
+  stat_summary(fun.y=mean,geom='point', position = position_dodge(width = .75))+
+  stat_summary(fun=mean, geom="line", aes(group=weighted_by), position = position_dodge(width = .75))+
+  scale_x_discrete(limits = c("1950-1980", "1981-2000", "2001-2021"))+
+  scale_y_continuous(limits = c(30, 67))+
+  labs(y = "Mean Food Security Index")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Weighted By", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))
+
+
+# ggsave("mean_F_boxplots830.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+
+###STEP 6: Weight climate scores by production ###
+```{r CLIMATE CHANGE WEIGHTED BY ALL PRODUCTION}
+#calculate index scores for each species weighted by production of ALL 54 species
+
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+#loop through each species and multiply f score by (production of that species/production of all species)
+#cat_totals (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+for (i in 1:nrow(speciesdata)){ #for each species
+  print(speciesdata$species[i])
+  f_score <- speciesdata$c[i] #get the score
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[1, b-1]) #weight by production of ALL species
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes <- pivot_longer(weighted_indexes, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes <- weighted_indexes[order(weighted_indexes$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  print(weighted_indexes$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#save data to graph weighted FCB together in step 8
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Cweightedby_all.csv")
+# write.csv(weighted_indexes,file=NAME)
+--------------------------------------------------------
+  
+#CLIMATE CHANGE WEIGHTED BY FINFISH
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+#loop through each FINFISH species and multiply f score by (production of that species/production of all species)
+#cat_totals (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+speciesdata2 <- filter(speciesdata, category == "finfish_inland" | category =="finfish_marine") #filter out just the finfish
+
+production_data2 <- filter(production_data, category =="finfish_inland"| category =="finfish_marine")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$c[i] #get the score
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[2, b-1]) #weight by production of finfish
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes1 <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes1 <- pivot_longer(weighted_indexes1, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes1 <- weighted_indexes1[order(weighted_indexes1$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes1)) {
+  print(weighted_indexes1$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes1$Year[i] <- year_labs[i]
+}
+
+weighted_indexes1$Year <- as.numeric(weighted_indexes1$Year) #make years numeric
+-----------------------------------------------------------------------------------------
+  
+#CLIMATE CHANGE WEIGHTED BY ALGAE
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+#loop through each ALGAE species and multiply f score by (production of that species/production of all species)
+#production_data (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+speciesdata2 <- filter(speciesdata, category == "algae") #filter out just the algae
+
+production_data2 <- filter(production_data, category =="algae")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$c[i] #get the score
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[4, b-1]) #weight by production of algae, row 4
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes2 <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes2 <- pivot_longer(weighted_indexes2, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes2 <- weighted_indexes2[order(weighted_indexes2$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes2)) {
+  print(weighted_indexes2$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes2$Year[i] <- year_labs[i]
+}
+
+weighted_indexes2$Year <- as.numeric(weighted_indexes2$Year) #make years numeric
+----------------------------------------------------------------------------------------------------
+  
+#CLIMATE CHANGE WEIGHTED BY CRUSTACEANS
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "crustacean")
+
+production_data2 <- filter(production_data, category == "crustacean")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$c[i] #get the c score
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[5, b-1]) #weight by production of crustaceans, row 5
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes3 <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes3 <- pivot_longer(weighted_indexes3, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes3 <- weighted_indexes3[order(weighted_indexes3$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes3)) {
+  print(weighted_indexes3$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes3$Year[i] <- year_labs[i]
+}
+
+weighted_indexes3$Year <- as.numeric(weighted_indexes3$Year) #make years numeric
+----------------------------------------------------------------------------------------
+#MOLLUSCS
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "mollusc")
+
+production_data2 <- filter(production_data, category == "mollusc")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$c[i] #get the c score
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[6, b-1]) #weight by production of molluscs, row 6
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes4 <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes4 <- pivot_longer(weighted_indexes4, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes4 <- weighted_indexes4[order(weighted_indexes4$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes4)) {
+  print(weighted_indexes4$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes4$Year[i] <- year_labs[i]
+}
+
+weighted_indexes4$Year <- as.numeric(weighted_indexes4$Year) #make years numeric
+------------------------------------------------------------------------------------------------
+
+#GRAPHING
+#need to add identifier column
+weighted_indexes$weighted_by <- "All"
+
+#weighted_indexes1 = weighted by finfish
+weighted_indexes1$weighted_by <- "Finfish"
+
+#weighted_indexes2 = weighted by algae
+weighted_indexes2$weighted_by <- "Algae"
+
+#weighted_indexes3 = weighted by crustaceans
+weighted_indexes3$weighted_by <- "Crustaceans"
+
+#weighted_indexes4 = weighted by molluscs
+weighted_indexes4$weighted_by <- "Molluscs"
+
+#put into one dataframe, all stacked up
+merge <- rbind(weighted_indexes, weighted_indexes1)
+merge <- rbind(merge, weighted_indexes2)
+merge <- rbind(merge, weighted_indexes3)
+merge <- rbind(merge, weighted_indexes4)
+
+#save this data
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/weighted_Cscores.csv")
+write.csv(merge,file=NAME)
+
+#graph
+plot <- ggplot(merge, aes(x=Year, y=Score, color = weighted_by)) +geom_line(size =1)+
+  labs(y = "Mean Climate Change Index", title = "Climate Change Potential of Aquaculture")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Weighted By", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))+
+  ylim(30,65)
+
+#SAVE
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
+# ggsave("C_weighted_combined.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+
+```
+
+```{r Graphing means in three time periods}
+
+#modify dataset: create three time periods
+scores_3_periods <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/weighted_Cscores.csv")
+scores_3_periods <- scores_3_periods[, c(2:4)] #remove extra column
+
+scores_3_periods$Year[scores_3_periods$Year >= 1950 & scores_3_periods$Year <= 1980] <- "1950-1980"
+scores_3_periods$Year[scores_3_periods$Year >= 1981 & scores_3_periods$Year <= 2000] <- "1981-2000"
+scores_3_periods$Year[scores_3_periods$Year >= 2001 & scores_3_periods$Year <= 2021] <- "2001-2021"
+
+plot <- ggplot(scores_3_periods, aes(x = Year, y=Score, color = weighted_by))+ geom_boxplot()+
+  stat_summary(fun.y=mean,geom='point', position = position_dodge(width = .75))+
+  stat_summary(fun=mean, geom="line", aes(group=weighted_by), position = position_dodge(width = .75))+
+  scale_x_discrete(limits = c("1950-1980", "1981-2000", "2001-2021"))+
+  scale_y_continuous(limits = c(30, 67))+
+  labs(y = "Mean Climate Index")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Weighted By", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))
+
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
+# ggsave("mean_C_boxplots830.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+
+####STEP 7: Weight biodiversity  scores by production ################
+```{r BIODIV WEIGHTED BY ALL TAXA}
+#calculate index scores for each species weighted by production of ALL 54 species
+
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+#loop through each species and multiply b score by (production of that species/production of all species)
+#cat_totals (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+for (i in 1:nrow(speciesdata)){ #for each species
+  print(speciesdata$species[i])
+  f_score <- speciesdata$b[i] #get the score
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[1, b-1]) #weight by production of ALL species
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes <- pivot_longer(weighted_indexes, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes <- weighted_indexes[order(weighted_indexes$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  print(weighted_indexes$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#Save data to graph weighted FCB together in Step 8
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Bweightedby_all.csv")
+# write.csv(weighted_indexes,file=NAME)
+```
+
+```{r WEIGHTED BY FINFISH}
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+#loop through each FINFISH species and multiply f score by (production of that species/production of all species)
+#cat_totals (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+speciesdata2 <- filter(speciesdata, category == "finfish_inland" | category =="finfish_marine") #filter out just the finfish
+
+production_data2 <- filter(production_data, category =="finfish_inland"| category =="finfish_marine")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$b[i] #get the score
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[2, b-1]) #weight by production of finfish
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes1 <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes1 <- pivot_longer(weighted_indexes1, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes1 <- weighted_indexes1[order(weighted_indexes1$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes1)) {
+  print(weighted_indexes1$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes1$Year[i] <- year_labs[i]
+}
+
+weighted_indexes1$Year <- as.numeric(weighted_indexes1$Year) #make years numeric
+```
+
+```{r WEIGHTED BY ALGAE}
+
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+#loop through each ALGAE species and multiply f score by (production of that species/production of all species)
+#production_data (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+speciesdata2 <- filter(speciesdata, category == "algae") #filter out just the algae
+
+production_data2 <- filter(production_data, category =="algae")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$b[i] #get the score
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[4, b-1]) #weight by production of algae, row 4
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes2 <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes2 <- pivot_longer(weighted_indexes2, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes2 <- weighted_indexes2[order(weighted_indexes2$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes2)) {
+  print(weighted_indexes2$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes2$Year[i] <- year_labs[i]
+}
+
+weighted_indexes2$Year <- as.numeric(weighted_indexes2$Year) #make years numeric
+```
+
+```{r WEIGHTED BY CRUSTACEANS}
+
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "crustacean")
+
+production_data2 <- filter(production_data, category == "crustacean")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$b[i] #get the b score
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[5, b-1]) #weight by production of crustaceans, row 5
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes3 <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes3 <- pivot_longer(weighted_indexes3, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes3 <- weighted_indexes3[order(weighted_indexes3$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes3)) {
+  print(weighted_indexes3$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes3$Year[i] <- year_labs[i]
+}
+
+weighted_indexes3$Year <- as.numeric(weighted_indexes3$Year) #make years numeric
+```
+
+```{r WEIGHTED BY MOLLUSCS}
+new_frame <- frame #create new frame
+new_frame <- frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "mollusc")
+
+production_data2 <- filter(production_data, category == "mollusc")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$b[i] #get the b score
+  
+  for (b in 3:74){ #for each year
+  index <- f_score*production_data2[i, b] #multiply score by that species' total production in each year
+  index <- index/(weighting_totals[6, b-1]) #weight by production of molluscs, row 6
+  
+  new_frame[i, b-1] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes4 <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes4 <- pivot_longer(weighted_indexes4, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes4 <- weighted_indexes4[order(weighted_indexes4$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes4)) {
+  print(weighted_indexes4$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes4$Year[i] <- year_labs[i]
+}
+
+weighted_indexes4$Year <- as.numeric(weighted_indexes4$Year) #make years numeric
+```
+
+```{r GRAPHING B}
+
+#GRAPHING
+#need to add identifier column
+weighted_indexes$weighted_by <- "All"
+
+#weighted_indexes1 = weighted by finfish
+weighted_indexes1$weighted_by <- "Finfish"
+
+#weighted_indexes2 = weighted by algae
+weighted_indexes2$weighted_by <- "Algae"
+
+#weighted_indexes3 = weighted by crustaceans
+weighted_indexes3$weighted_by <- "Crustaceans"
+
+#weighted_indexes4 = weighted by molluscs
+weighted_indexes4$weighted_by <- "Molluscs"
+
+#put into one dataframe, all stacked up
+merge <- rbind(weighted_indexes, weighted_indexes1)
+merge <- rbind(merge, weighted_indexes2)
+merge <- rbind(merge, weighted_indexes3)
+merge <- rbind(merge, weighted_indexes4)
+
+#save this data
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/weighted_Bscores.csv")
+write.csv(merge,file=NAME)
+
+#graph
+ggplot(merge, aes(x=Year, y=Score, color = weighted_by)) +geom_line(size =1)+
+  labs(y = "Mean Biodiversity Index", title = "Biodiversity Potential of Aquaculture")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Weighted By", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))
+
+#range 20-70?
+#graph
+plot <- ggplot(merge, aes(x=Year, y=Score, color = weighted_by)) +geom_line(size =1)+
+  labs(y = "Mean Biodiversity Index", title = "Biodiversity Potential of Aquaculture")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Weighted By", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))+
+  ylim(30,70)
+
+#SAVE
+# ggsave("B_weighted_combined830.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+
+```
+
+```{r Graphing means in three time periods}
+#magnitude of F, C and B indices by taxonomic group in three time periods
+
+#modify dataset: create three time periods
+# scores_3_periods <- merge
+scores_3_periods <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/weighted_Bscores.csv")
+scores_3_periods <- scores_3_periods[, c(2:4)] #remove extra column
+
+scores_3_periods$Year[scores_3_periods$Year >= 1950 & scores_3_periods$Year <= 1980] <- "1950-1980"
+scores_3_periods$Year[scores_3_periods$Year >= 1981 & scores_3_periods$Year <= 2000] <- "1981-2000"
+scores_3_periods$Year[scores_3_periods$Year >= 2001 & scores_3_periods$Year <= 2021] <- "2001-2021"
+
+plot <- ggplot(scores_3_periods, aes(x = Year, y=Score, color = weighted_by))+ geom_boxplot()+
+  stat_summary(fun.y=mean,geom='point', position = position_dodge(width = .75))+
+  stat_summary(fun=mean, geom="line", aes(group=weighted_by), position = position_dodge(width = .75))+
+  scale_x_discrete(limits = c("1950-1980", "1981-2000", "2001-2021"))+
+  scale_y_continuous(limits = c(30, 67))+
+  labs(y = "Mean Biodiversity Index")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Weighted By", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))
+
+# setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
+# ggsave("mean_B_boxplots830.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+
+#STEP 8:Combining weighted F, C, B into one graph ########
+```{r COMBINED FCB GRAPH WEIGHTED BY PRODUCTION OF ALL SPECIES}
+
+#NEW TEST 8.30
+#load in the data saved in steps 5-7
+F_weighted_all <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Fweightedby_all.csv")
+F_weighted_all <- F_weighted_all[, c(2:3)]
+C_weighted_all <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Cweightedby_all.csv")
+C_weighted_all <- C_weighted_all[, c(2:3)]
+B_weighted_all <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Bweightedby_all.csv")
+B_weighted_all <- B_weighted_all[, c(2:3)]
+
+#Add FCB labels to each dataset before merging
+F_weighted_all$Index <- "Food Security"
+#weighted_indexesc = C weighted by all 
+C_weighted_all$Index <- "Climate Change"
+#weighted_indexesb = B weighted by all 
+B_weighted_all$Index <- "Biodiversity"
+
+#put into one dataframe, all stacked up
+merge <- rbind(F_weighted_all, C_weighted_all)
+merge <- rbind(merge, B_weighted_all)
+
+#graph
+plot <- ggplot(merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+  labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by 54 Major Species")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))+
+  ylim(48, 60)
+
+
+#SAVE
+# setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
+# ggsave("FCB_weightedby_all830.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+
+###STEP 9: Correlations over time ### NEEDS WORK!!!
+```{r correlations of FCB over time}
+
+#reconfigure f
+weighted_indexes_graph <- weighted_indexes[, -3]
+colnames(weighted_indexes_graph)[2] = "Food_Security"
+
+#reconfigure c
+weighted_indexes_graphc <- weighted_indexesc[, -3]
+colnames(weighted_indexes_graphc)[2] = "Climate_Change"
+
+#reconfigure b
+weighted_indexes_graphb <- weighted_indexesb[, -3]
+colnames(weighted_indexes_graphb)[2] = "Biodiversity"
+
+#merge by year
+a <- merge(weighted_indexes_graph, weighted_indexes_graphc, by="Year")
+a <- merge(a, weighted_indexes_graphb, by="Year")
+
+#find correlations
+
+# Do the data from each of the 2 variables (x, y) follow a normal distribution?
+# Use Shapiro-Wilk normality production_data –> R function: shapiro.production_data()
+# and look at the normality plot —> R function: ggpubr::ggqqplot()
+
+# Shapiro-Wilk production_data can be performed as follow:
+# Null hypothesis: the data are normally distributed
+# Alternative hypothesis: the data are not normally distributed
+
+# Shapiro-Wilk normality production_data for f
+shapiro.production_data(a$Food_Security) # => p NOT NORMAL p-value = 0.0005529
+# Shapiro-Wilk normality production_data for c
+shapiro.production_data(a$Climate_Change) # => p NOT NORMAL p-value = 0.006915
+# Shapiro-Wilk normality production_data for b
+shapiro.production_data(a$Biodiversity) # => NORMAL: p = 0.01736
+
+# Visual inspection of the data normality using Q-Q plots (quantile-quantile plots). Q-Q plot draws the correlation between a given sample and the normal distribution.
+library(ggpubr)
+ggqqplot(a$Food_Security, ylab = "Food Security")
+ggqqplot(a$Climate_Change, ylab = "Climate Change")
+ggqqplot(a$Biodiversity, ylab = "Biodiversity")
+
+#histogram to see dist
+ggdensity(a$Food_Security, 
+          main = "Density plot of F index",
+          xlab = "Food Security Index")
+
+ggdensity(a$Climate_Change, 
+          main = "Density plot of C index",
+          xlab = "Climate Change Index")
+
+ggdensity(a$Biodiversity, 
+          main = "Density plot of B index",
+          xlab = "Biodiversity Index")
+
+
+#PEARSON, assuming normal distribution...
+#FOOD SECURITY AND CLIMATE CHANGE
+ggscatter(a, x = "Food_Security", y = "Climate_Change", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "Food Security Index", ylab = "Climate Change Index") #SIGNIFICANT, R = 0.92; p = < 2.2 e-16
+
+res <- cor.production_data(a$Food_Security, a$Climate_Change, 
+                    method = "pearson")
+res
+
+#FOOD SECURITY AND BIODIVERSITY
+ggscatter(a, x = "Food_Security", y = "Biodiversity", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "Food Security Index", ylab = "Biodiversity Index") #SIGNIFICANT, R = 0.95; p = < 2.2 e-16
+
+res <- cor.production_data(a$Food_Security, a$Biodiversity, 
+                    method = "pearson")
+res
+
+#BIODIVERSITY AND CLIMATE CHANGE
+ggscatter(a, x = "Climate_Change", y = "Biodiversity", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "Climate Change Index", ylab = "Biodiversity Index") #SIGNIFICANT, R = 0.79; p = 3.086e-16
+
+res <- cor.production_data(a$Biodiversity, a$Climate_Change, 
+                    method = "pearson")
+res
+
+#Spearman rank correlation, assuming non-normal dist
+# The Kendall rank correlation coefficient or Kendall’s tau statistic is used to estimate a rank-based measure of association. This production_data may be used if the data do not necessarily come from a bivariate normal distribution.
+
+res2 <- cor.production_data(a$Food_Security, a$Climate_Change,  method="kendall") #SIG; tau = 0.6697966, p-value < 2.2e-16
+res2
+
+res2 <- cor.production_data(a$Food_Security, a$Biodiversity,  method="kendall") #SIG; tau = 0.5547731; p-value = 5.453e-12
+res2
+
+res2 <- cor.production_data(a$Biodiversity, a$Climate_Change,  method="kendall") #SIG; tau = 0.7519562; p-value < 2.2e-16
+res2
+```
+
+
+CALCULATING DIVERGENCE or CONVERGENCE
+```{r}
+
+#make five time slices, 13 to 14 years each
+
+F1 <- filter(merge, Year < 1965, Index == "Food Security")
+F2 <- filter(merge, Year > 1964 & Year < 1979, Index == "Food Security")
+F3 <- filter(merge, Year > 1978 & Year < 1993, Index == "Food Security")
+F4 <- filter(merge, Year > 1992 & Year < 2007, Index == "Food Security")
+F5 <- filter(merge, Year > 2006, Index == "Food Security")
+
+C1 <- filter(merge, Year < 1965, Index == "Climate Change")
+C2 <- filter(merge, Year > 1964 & Year < 1979, Index == "Climate Change")
+C3 <- filter(merge, Year > 1978 & Year < 1993, Index == "Climate Change")
+C4 <- filter(merge, Year > 1992 & Year < 2007, Index == "Climate Change")
+C5 <- filter(merge, Year > 2006, Index == "Climate Change")
+
+B1 <- filter(merge, Year < 1965, Index == "Biodiversity")
+B2 <- filter(merge, Year > 1964 & Year < 1979, Index == "Biodiversity")
+B3 <- filter(merge, Year > 1978 & Year < 1993, Index == "Biodiversity")
+B4 <- filter(merge, Year > 1992 & Year < 2007, Index == "Biodiversity")
+B5 <- filter(merge, Year > 2006, Index == "Biodiversity")
+
+#make new frame to store values
+divergence = data.frame(matrix(
+  vector(), 5, 3, dimnames=list(c(), c("B-F","B-C","F-C"))),
+                stringsAsFactors=F)
+rownames(divergence) <- c("1950-1964","1965-1978","1979-1992","1993-2006", "2007-2021")
+
+#subtract and add values to dataframe
+# divergence$B.F[1] <- B1-F1
+
+BF1 <- data.frame(B1$Score - F1$Score)
+BF2 <- data.frame(B2$Score - F2$Score)
+BF3 <- data.frame(B3$Score - F3$Score)
+BF4 <- data.frame(B4$Score - F4$Score)
+BF5 <- data.frame(B5$Score - F5$Score)
+
+BC1 <- data.frame(B1$Score - C1$Score)
+BC2 <- data.frame(B2$Score - C2$Score)
+BC3 <- data.frame(B3$Score - C3$Score)
+BC4 <- data.frame(B4$Score - C4$Score)
+BC5 <- data.frame(B5$Score - C5$Score)
+
+FC1 <- data.frame(F1$Score - C1$Score)
+FC2 <- data.frame(F2$Score - C2$Score)
+FC3 <- data.frame(F3$Score - C3$Score)
+FC4 <- data.frame(F4$Score - C4$Score)
+FC5 <- data.frame(F5$Score - C5$Score)
+
+slice1 <- cbind(BF1, BC1, FC1) #1950-1964
+divergence$B.F[1] <- mean(slice1$B1.Score...F1.Score)
+divergence$B.C[1] <- mean(slice1$B1.Score...C1.Score)
+divergence$F.C[1] <- mean(slice1$F1.Score...C1.Score)
+
+slice2 <- cbind(BF2, BC2, FC2)
+divergence$B.F[2] <- mean(slice2$B2.Score...F2.Score)
+divergence$B.C[2] <-mean(slice2$B2.Score...C2.Score)
+divergence$F.C[2] <- mean(slice2$F2.Score...C2.Score)
+
+slice3 <- cbind(BF3, BC3, FC3)
+divergence$B.F[3] <- mean(slice3$B3.Score...F3.Score)
+divergence$B.C[3] <- mean(slice3$B3.Score...C3.Score)
+divergence$F.C[3] <- mean(slice3$F3.Score...C3.Score)
+
+slice4 <- cbind(BF4, BC4, FC4)
+divergence$B.F[4] <- mean(slice4$B4.Score...F4.Score)
+divergence$B.C[4] <- mean(slice4$B4.Score...C4.Score)
+divergence$F.C[4] <- mean(slice4$F4.Score...C4.Score)
+
+slice5 <- cbind(BF5, BC5, FC5)
+divergence$B.F[5] <- mean(slice5$B5.Score...F5.Score)
+divergence$B.C[5] <- mean(slice5$B5.Score...C5.Score)
+divergence$F.C[5] <- mean(slice5$F5.Score...C5.Score)
+
+#SAVE
+
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Fuzzy/Figures/divergence2.csv")
+write.csv(divergence,file=NAME)
+```
+
+```{r COMBINED FCB GRAPH WEIGHTED BY FINFISH}
+
+#Food security
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+#loop through each FINFISH species and multiply f score by (production of that species/production of all species)
+#cat_totals (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+speciesdata2 <- filter(speciesdata, category == "finfish_inland" | category =="finfish_marine") #filter out just the finfish
+
+production_data2 <- filter(production_data, category =="finfish_inland"| category =="finfish_marine")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$f[i] #get the f score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category
+  index <- index/(weighting_totals[2, b]) #weight by production of finfish
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes <- pivot_longer(weighted_indexes, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes <- weighted_indexes[order(weighted_indexes$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  print(weighted_indexes$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+
+#CLIMATE CHANGE
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "finfish_inland" | category =="finfish_marine") #filter out just the finfish
+
+production_data2 <- filter(production_data, category =="finfish_inland"| category =="finfish_marine")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$c[i] #get the c score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category
+  index <- index/(weighting_totals[2, b]) #weight by production of finfish
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexesc <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexesc <- pivot_longer(weighted_indexesc, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexesc <- weighted_indexesc[order(weighted_indexesc$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexesc)) {
+  print(weighted_indexesc$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexesc$Year[i] <- year_labs[i]
+}
+
+weighted_indexesc$Year <- as.numeric(weighted_indexesc$Year) #make years numeric
+
+
+#BIODIVERSITY
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "finfish_inland" | category =="finfish_marine") #filter out just the finfish
+
+production_data2 <- filter(production_data, category =="finfish_inland"| category =="finfish_marine")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$b[i] #get the b score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category
+  index <- index/(weighting_totals[2, b]) #weight by production of finfish
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexesb <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexesb <- pivot_longer(weighted_indexesb, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexesb <- weighted_indexesb[order(weighted_indexesb$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexesb)) {
+  print(weighted_indexesb$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexesb$Year[i] <- year_labs[i]
+}
+
+weighted_indexesb$Year <- as.numeric(weighted_indexesb$Year) #make years numeric
+
+#GRAPHING
+#weighted_indexes = F weighted by all
+weighted_indexes$Index <- "Food Security"
+#weighted_indexesc = C weighted by all 
+weighted_indexesc$Index <- "Climate Change"
+#weighted_indexesb = B weighted by all 
+weighted_indexesb$Index <- "Biodiversity"
+
+#put into one dataframe, all stacked up
+merge <- rbind(weighted_indexes, weighted_indexesc)
+merge <- rbind(merge, weighted_indexesb)
+
+#graph
+plot <- ggplot(merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+  labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Finfish")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))+
+        ylim(45, 54)
+
+
+#SAVE
+# ggsave("FCB_weightedby_finfish.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+
+```{r COMBINED FCB GRAPH WEIGHTED BY ALGAE}
+
+#Food security
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "algae") #filter out just the algae
+
+production_data2 <- filter(production_data, category =="algae")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$f[i] #get the f score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category, need to start at column 3
+  index <- index/(weighting_totals[4, b]) #weight by production of algae, row 4
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes <- pivot_longer(weighted_indexes, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes <- weighted_indexes[order(weighted_indexes$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  print(weighted_indexes$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#CLIMATE CHANGE
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "algae") #filter out just the algae
+
+production_data2 <- filter(production_data, category =="algae")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$c[i] #get the c score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category, need to start at column 3
+  index <- index/(weighting_totals[4, b]) #weight by production of algae, row 4
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexesc <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexesc <- pivot_longer(weighted_indexesc, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexesc <- weighted_indexesc[order(weighted_indexesc$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexesc)) {
+  print(weighted_indexesc$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexesc$Year[i] <- year_labs[i]
+}
+
+weighted_indexesc$Year <- as.numeric(weighted_indexesc$Year) #make years numeric
+
+#BIODIVERSITY
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "algae") #filter out just the algae
+
+production_data2 <- filter(production_data, category =="algae")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$b[i] #get the b score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category, need to start at column 3
+  index <- index/(weighting_totals[4, b]) #weight by production of algae, row 4
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexesb <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexesb <- pivot_longer(weighted_indexesb, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexesb <- weighted_indexesb[order(weighted_indexesb$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexesb)) {
+  print(weighted_indexesb$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexesb$Year[i] <- year_labs[i]
+}
+
+weighted_indexesb$Year <- as.numeric(weighted_indexesb$Year) #make years numeric
+
+#GRAPHING
+#weighted_indexes = F weighted by all
+weighted_indexes$Index <- "Food Security"
+#weighted_indexesc = C weighted by all 
+weighted_indexesc$Index <- "Climate Change"
+#weighted_indexesb = B weighted by all 
+weighted_indexesb$Index <- "Biodiversity"
+
+#put into one dataframe, all stacked up
+merge <- rbind(weighted_indexes, weighted_indexesc)
+merge <- rbind(merge, weighted_indexesb)
+
+#graph
+plot <- ggplot(merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+  labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Algae")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))+
+  ylim(53, 67)
+
+
+#SAVE
+# ggsave("FCB_weightedby_algae.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+
+```
+
+```{r COMBINED FCB GRAPH WEIGHTED BY CRUSTACEANS}
+
+#Food security
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "crustacean")
+
+production_data2 <- filter(production_data, category == "crustacean")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$f[i] #get the f score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category, need to start at column 3
+  index <- index/(weighting_totals[5, b]) #weight by production of crustaceans
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes <- pivot_longer(weighted_indexes, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes <- weighted_indexes[order(weighted_indexes$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  print(weighted_indexes$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#CLIMATE CHANGE
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "crustacean")
+
+production_data2 <- filter(production_data, category == "crustacean")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$c[i] #get the c score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category, need to start at column 3
+  index <- index/(weighting_totals[5, b]) #weight by production of crustaceans
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexesc <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexesc <- pivot_longer(weighted_indexesc, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexesc <- weighted_indexesc[order(weighted_indexesc$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexesc)) {
+  print(weighted_indexesc$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexesc$Year[i] <- year_labs[i]
+}
+
+weighted_indexesc$Year <- as.numeric(weighted_indexesc$Year) #make years numeric
+
+#BIODIVERSITY
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "crustacean")
+
+production_data2 <- filter(production_data, category == "crustacean")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$b[i] #get the b score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category, need to start at column 3
+  index <- index/(weighting_totals[5, b]) #weight by crustaceans
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexesb <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexesb <- pivot_longer(weighted_indexesb, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexesb <- weighted_indexesb[order(weighted_indexesb$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexesb)) {
+  print(weighted_indexesb$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexesb$Year[i] <- year_labs[i]
+}
+
+weighted_indexesb$Year <- as.numeric(weighted_indexesb$Year) #make years numeric
+
+#GRAPHING
+#weighted_indexes = F weighted by all
+weighted_indexes$Index <- "Food Security"
+#weighted_indexesc = C weighted by all 
+weighted_indexesc$Index <- "Climate Change"
+#weighted_indexesb = B weighted by all 
+weighted_indexesb$Index <- "Biodiversity"
+
+#put into one dataframe, all stacked up
+merge <- rbind(weighted_indexes, weighted_indexesc)
+merge <- rbind(merge, weighted_indexesb)
+
+#graph
+plot <- ggplot(merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+  labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Crustaceans")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))+
+  ylim(30, 55)
+
+
+#SAVE
+# ggsave("FCB_weightedby_crustaceans.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+
+```{r COMBINED FCB GRAPH WEIGHTED BY MOLLUSCS}
+
+#Food security
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "mollusc")
+
+production_data2 <- filter(production_data, category == "mollusc")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$f[i] #get the f score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category, need to start at column 3
+  index <- index/(weighting_totals[6, b]) #weight by production of molluscs
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexes <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexes <- pivot_longer(weighted_indexes, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes <- weighted_indexes[order(weighted_indexes$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  print(weighted_indexes$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#CLIMATE CHANGE
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "mollusc")
+
+production_data2 <- filter(production_data, category == "mollusc")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$c[i] #get the c score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category, need to start at column 3
+  index <- index/(weighting_totals[6, b]) #weight by production of molluscs
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexesc <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexesc <- pivot_longer(weighted_indexesc, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexesc <- weighted_indexesc[order(weighted_indexesc$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexesc)) {
+  print(weighted_indexesc$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexesc$Year[i] <- year_labs[i]
+}
+
+weighted_indexesc$Year <- as.numeric(weighted_indexesc$Year) #make years numeric
+
+#BIODIVERSITY
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+speciesdata2 <- filter(speciesdata, category == "mollusc")
+
+production_data2 <- filter(production_data, category == "mollusc")
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$b[i] #get the b score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category, need to start at column 3
+  index <- index/(weighting_totals[6, b]) #weight by molluscs
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+#calculate the annual mean each year
+
+for (i in 2:73){
+    a <- sum(new_frame[, i], na.rm = TRUE) #sum all the columns
+    print(a)
+    
+    new_frame[58, i] <- a
+}
+
+new_frame[58, 1] <- "Weighted Index" #name the newest row
+weighted_indexesb <- new_frame[58, 2:73] #new frame with just the weighted scores each year
+
+library(tidyr)
+#make long
+weighted_indexesb <- pivot_longer(weighted_indexesb, cols = everything(), 
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexesb <- weighted_indexesb[order(weighted_indexesb$Year),] #put earlier years first
+
+year_labs <- seq(1950, 2021, by = 1)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexesb)) {
+  print(weighted_indexesb$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexesb$Year[i] <- year_labs[i]
+}
+
+weighted_indexesb$Year <- as.numeric(weighted_indexesb$Year) #make years numeric
+
+#GRAPHING
+#weighted_indexes = F weighted by all
+weighted_indexes$Index <- "Food Security"
+#weighted_indexesc = C weighted by all 
+weighted_indexesc$Index <- "Climate Change"
+#weighted_indexesb = B weighted by all 
+weighted_indexesb$Index <- "Biodiversity"
+
+#put into one dataframe, all stacked up
+merge <- rbind(weighted_indexes, weighted_indexesc)
+merge <- rbind(merge, weighted_indexesb)
+
+#graph
+plot <- ggplot(merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+  labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Molluscs")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))+
+  ylim(44, 66)
+
+
+
+#SAVE
+# ggsave("FCB_weightedby_molluscs.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+
+
+CHECKING FOR CORRELATION
+```{r}
+library("ggpubr")
+library(ggplot2)
+
+# Do the data from each of the 2 variables (x, y) follow a normal distribution?
+# Use Shapiro-Wilk normality production_data –> R function: shapiro.production_data()
+# and look at the normality plot —> R function: ggpubr::ggqqplot()
+
+# Shapiro-Wilk production_data can be performed as follow:
+# Null hypothesis: the data are normally distributed
+# Alternative hypothesis: the data are not normally distributed
+
+# Shapiro-Wilk normality production_data for f
+shapiro.production_data(speciesdata$f) # => p-value = 0.00916 NOT NORMAL
+# Shapiro-Wilk normality production_data for c
+shapiro.production_data(speciesdata$c) # => p-value = 0.109 NORMAL
+# Shapiro-Wilk normality production_data for b
+shapiro.production_data(speciesdata$b) # => p-value = 0.01076 NORMAL 
+
+# Visual inspection of the data normality using Q-Q plots (quantile-quantile plots). Q-Q plot draws the correlation between a given sample and the normal distribution.
+
+ggqqplot(speciesdata$f, ylab = "Food Security")
+ggqqplot(speciesdata$c, ylab = "Climate Change")
+ggqqplot(speciesdata$b, ylab = "Biodiversity")
+
+#histogram to see dist
+ggdensity(speciesdata$f, 
+          main = "Density plot of F index",
+          xlab = "Food Security Index")
+
+ggdensity(speciesdata$c, 
+          main = "Density plot of C index",
+          xlab = "Climate Change Index")
+
+ggdensity(speciesdata$b, 
+          main = "Density plot of B index",
+          xlab = "Biodiversity Index")
+
+
+#PEARSON, assuming normal distribution...
+#FOOD SECURITY AND CLIMATE CHANGE
+ggscatter(speciesdata, x = "f", y = "c", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "Food Security Index", ylab = "Climate Change Index") #SIGNIFICANT, R = 0.48; p = 0.0001504
+
+res <- cor.production_data(speciesdata$f, speciesdata$c, 
+                    method = "pearson")
+res
+
+#FOOD SECURITY AND BIODIVERSITY
+ggscatter(speciesdata, x = "f", y = "b", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "Food Security Index", ylab = "Biodiversity Index") #SIGNIFICANT, R = 0.44; p = 0.0005818
+
+res <- cor.production_data(speciesdata$f, speciesdata$b, 
+                    method = "pearson")
+res
+
+#BIODIVERSITY AND CLIMATE CHANGE
+ggscatter(speciesdata, x = "c", y = "b", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "Climate Change Index", ylab = "Biodiversity Index") #SIGNIFICANT, R = 0.48; p = 0.000145
+
+res <- cor.production_data(speciesdata$c, speciesdata$b, 
+                    method = "pearson")
+res
+
+#Spearman rank correlation, assuming non-normal dist
+# The Kendall rank correlation coefficient or Kendall’s tau statistic is used to estimate a rank-based measure of association. This production_data may be used if the data do not necessarily come from a bivariate normal distribution.
+
+res2 <- cor.production_data(speciesdata$f, speciesdata$c,  method="kendall") #SIG; tau = 0.4261061, p-value = 2.944e-06
+res2
+
+res2 <- cor.production_data(speciesdata$f, speciesdata$b,  method="kendall") #SIG; tau = 0.3795163; p-value = 3.199e-05; z = 4.9297
+res2
+
+res2 <- cor.production_data(speciesdata$c, speciesdata$b,  method="kendall") #SIG; tau = 0.359071; p-value = 8.212e-05
+res2
+
+```
+
+#################################################
+Percent contribution to index
+#make sure to run from line 565 (for food security) so you can use "weighted_indexes_1 etc" or from 878 for climate change, or 1183 for biodiv
+
+#new approach: % contribution of taxonomic groups relative to F, C, B relative to the proportion of total production
+#Make three graphs, one for each FCB. For each taxonomic group, divide mean F/total production etc, plot all taxonomic groups on the same graph. Y-axis will be 0 to 1; don't plot production line, just the ratio.
+
+```{r}
+#first, calculate the % contribution of each taxa to annual production. We will eventually divide FCB indices by this proportion to find a ratio.
+
+weighting_totals4 <- weighting_totals[-c(3), ]
+
+new_frame <- weighting_totals4 #create new frame
+new_frame <- new_frame[FALSE, ]
+
+#divide taxa production in each year by the total prod in that year
+
+for (i in 2:nrow(weighting_totals4)){ #for each taxonomic group
+    for (b in 2:73){ #for each year
+      total_prod <- weighting_totals4[1, b] #get the total prod in that year
+      index <- weighting_totals4[i, b]/total_prod*100 #divide score by that species' total prod
+      new_frame[i, b] <- index   #add these numbers to the frame
+      
+  } 
+}
+
+#delete first row
+new_frame <- new_frame[-c(1), ]
+#rename
+new_frame[1, 1] <-"Finfish"
+new_frame[2, 1] <-"Algae"
+new_frame[3, 1] <-"Crustacean"
+new_frame[4, 1] <-"Mollusc"
+
+#make long?
+new_frame <- pivot_longer(new_frame, cols = -c("species"),
+                                names_to = "Year", values_to = "Perc_prod")
+
+
+
+#fix years
+year_labs <- rep(2021:1950, times=6) 
+
+
+#FIX from here
+#rename year column in weighted_indexes
+for (i in 1:nrow(new_frame)) {
+  print(new_frame$Year[i])
+  #replace each year with the actual year number from year_labs
+  
+  new_frame$Year[i] <- year_labs[i]
+}
+
+
+#save this
+totalproduction <- new_frame
+#goes one taxa at a time, from 2021 to 1950
+
+#NEED TO PUT IN year order??
+totalproduction <- totalproduction %>% arrange(Year)
+```
+
+```{r}
+#now, calculate the percentage contribution of each taxa to F, C and B in each year.
+
+#FOOD00 from line 570
+#CLIMATE--run from 920
+#CLIMATE--run from 1258
+
+#weighting totals has an extra row: get rid of it here
+weighting_totals3 <- weighting_totals[-3, ]
+#also put in reverse order
+weighting_totals3 <- rev(weighting_totals3)
+
+#merge data
+all_taxa <- merge(weighted_indexes1, weighted_indexes2, by="Year")
+all_taxa <- merge(all_taxa, weighted_indexes3, by="Year")
+all_taxa <- merge(all_taxa, weighted_indexes4, by="Year")
+all_taxa <- merge(all_taxa, weighted_indexes, by="Year")
+
+all_taxa <- all_taxa[ -c(3, 5, 7, 9, 11) ]
+
+#rename
+colnames(all_taxa)[2] <- "Finfish"
+colnames(all_taxa)[3] <- "Algae"
+colnames(all_taxa)[4] <- "Crustaceans"
+colnames(all_taxa)[5] <- "Molluscs"
+colnames(all_taxa)[6] <- "All"
+
+new_frame <- all_taxa[, -c(6)] #create new frame
+# new_frame <- new_frame[FALSE, ]
+
+#for each taxa
+for (i in 2:5) {
+  # print(weighting_totals3$species[i])
+ for (y in 1:72){ #for each year
+   taxa_perc <- weighting_totals3[i, y]/weighting_totals3[1,y]
+   # print(weighting_totals3[i, y])
+   # print(taxa_perc)
+   product <- taxa_perc*all_taxa[y, i] #multiply the index of the taxa by taxa_perc
+   # print(all_taxa[y, i])
+   # print(product)
+   product <- product/all_taxa[y, 6] #fix!!!!!!!?
+   print(product) #put this number in a dataframe?
+   
+   new_frame[y, i] <- product*100
+   
+ }
+}
+
+#make long?
+new_frame <- pivot_longer(new_frame, cols = -c("Year"),
+                                names_to = "species", values_to = "index_perc")
+
+#save this
+totalindex <- new_frame
+```
+
+```{r}
+#combine totalindex and totalprod
+prod_index <- cbind(totalindex, totalproduction)
+prod_index <- prod_index[, -c(4, 5)]
+
+#new column divides perc contribution to index, by perc contribution to production
+prod_index[, 5] <- "new"
+colnames(prod_index)[5] <- "ratio"
+
+#calculate ratio for every row
+for (i in 1:nrow(prod_index)) {
+  ratio <- prod_index$index_perc[i]/prod_index$Perc_prod[i]
+  prod_index$ratio[i] <- ratio
+}
+
+#graph this:
+plot <- ggplot(prod_index, aes(x=Year, y=as.numeric(ratio) , color=species)) + geom_point()+
+      geom_hline(yintercept = 1)+
+      labs(y = "Contribution to B index:contribution to production")
+      # ylim(0, 1.5)
+
+#SAVE
+# setwd("/Users/aleahw/Documents/Master's!!/Chapter_2")
+# ggsave("Ratio_B_prod.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+
+```
+
+
+```{r}
+#graph
+#make long
+new_frame <- pivot_longer(new_frame, cols = -c("Year"),
+                                names_to = "Taxa", values_to = "Score")
+
+# weighted_indexes <- weighted_indexes[order(weighted_indexes$Year),] #put earlier years first
+
+#specify order of bars (from top to bottom)
+new_frame$Taxa <- factor(new_frame$Taxa, levels=c('Algae','Crustaceans', 'Molluscs','Finfish'))
+
+#create stacked bar chart
+ggplot(new_frame, aes(x=Year, y=Score, fill=Taxa)) + 
+    geom_bar(position='stack', stat='identity')+
+     labs(y = "Percent contribution to F index")
+
+# weighting_totals4 <- pivot_wider(merge, names_from = "Year", values_from = "Score")
+# 
+# new_frame <- weighting_totals4 #create new frame
+# new_frame <- new_frame[FALSE, ]
+```
+
+
+#OLD
+```{r OLD}
+
+#weighting totals has an extra row: get rid of it here
+weighting_totals3 <- weighting_totals[-3, ]
+#also put in reverse order
+weighting_totals3 <- rev(weighting_totals3)
+
+#merge data
+all_taxa <- merge(weighted_indexes1, weighted_indexes2, by="Year")
+all_taxa <- merge(all_taxa, weighted_indexes3, by="Year")
+all_taxa <- merge(all_taxa, weighted_indexes4, by="Year")
+all_taxa <- merge(all_taxa, weighted_indexes, by="Year")
+
+all_taxa <- all_taxa[ -c(3, 5, 7, 9, 11) ]
+
+#rename
+colnames(all_taxa)[2] <- "Finfish"
+colnames(all_taxa)[3] <- "Algae"
+colnames(all_taxa)[4] <- "Crustaceans"
+colnames(all_taxa)[5] <- "Molluscs"
+colnames(all_taxa)[6] <- "All"
+
+new_frame <- all_taxa[, -c(6)] #create new frame
+# new_frame <- new_frame[FALSE, ]
+
+#for each taxa
+for (i in 2:5) {
+  # print(weighting_totals3$species[i])
+ for (y in 1:72){ #for each year
+   taxa_perc <- weighting_totals3[i, y]/weighting_totals3[1,y]
+   # print(weighting_totals3[i, y])
+   # print(taxa_perc)
+   product <- taxa_perc*all_taxa[y, i] #multiply the index of the taxa by taxa_perc
+   # print(all_taxa[y, i])
+   # print(product)
+   product <- product/all_taxa[y, 6] #fix!!!!!!!?
+   print(product) #put this number in a dataframe?
+   
+   new_frame[y, i] <- product
+ }
+}
+
+#graph
+#make long
+new_frame <- pivot_longer(new_frame, cols = -c("Year"),
+                                names_to = "Taxa", values_to = "Score")
+
+# weighted_indexes <- weighted_indexes[order(weighted_indexes$Year),] #put earlier years first
+
+#specify order of bars (from top to bottom)
+new_frame$Taxa <- factor(new_frame$Taxa, levels=c('Algae','Crustaceans', 'Molluscs','Finfish'))
+
+#create stacked bar chart
+ggplot(new_frame, aes(x=Year, y=Score, fill=Taxa)) + 
+    geom_bar(position='stack', stat='identity')+
+     labs(y = "Percent contribution to F index")
+
+
+# 
+# ggplot(new_frame, aes(fill=Taxa, y=Score, x=Year)) + 
+#     geom_bar(position="fill", stat="identity")+
+#     labs(y = "Percent contribution to B index")+
+#       scale_y_continuous(labels = scales::percent) +
+#         geom_text(aes(label = paste0(Score*100,"%")),
+#                   position = position_stack(vjust = 0.5), size = 0.5)
+              
+#change colors?
+
+#SAVE
+# setwd("/Users/aleahw/Documents/Master's!!/Fuzzy/production_totals")
+# ggsave("percent_contribution_B2.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+
+```{r}
+#compared to a stacked % barchart of just production
+
+#delete "all" from weighting totals 2
+weighting_totals2  <- weighting_totals2 %>%
+  filter(species != "all species")
+
+#specify order of bars (from top to bottom)
+weighting_totals2$species <- factor(weighting_totals2$species, levels=c('algae','crustacean', 'mollusc','finfish'))
+
+ggplot(weighting_totals2, aes(fill=species, y=Score, x=Year)) + 
+    geom_bar(position="fill", stat="identity")+
+    labs(y = "Percent contribution to total production")
+
+# ggsave("percent_contribution_prod2.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+
+#########################################
+#Minimum and Maximum FCB index of each taxa weighted by total production of taxa
+```{r}
+#find minimum and maximum FCB index of each species
+
+#finfish:
+speciesdata2 <- filter(speciesdata, category == "finfish_inland" | category =="finfish_marine")
+
+production_data2 <- filter(production_data, category =="finfish_inland"| category =="finfish_marine")
+
+fmax <- subset(speciesdata2, f == max(f))
+fmin <- subset(speciesdata2, f == min(f))
+
+cmax <- subset(speciesdata2, c == max(c))
+cmin <- subset(speciesdata2, c == min(c))
+
+bmax <- subset(speciesdata2, b == max(b))
+bmin <- subset(speciesdata2, b == min(b))
+
+#combine in a dataframe
+speciesdata2 <- rbind(fmax, fmin) #change for c and b
+
+#Food security
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+#loop through each FINFISH species and multiply f score by (production of finfish /production of all species)
+#cat_totals (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$f[i] #get the f score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*weighting_totals[2, b] #multiply score by the taxa's total production in each year, b is 2 which works because the year starts in the second column
+  index <- index/(weighting_totals[1, b]) #weight by production of all species
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+library(tidyr)
+#make long
+weighted_indexes <- pivot_longer(new_frame, cols = -c("species"),
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes <- weighted_indexes[order(weighted_indexes$Year),] #put earlier years first
+
+vec <- c(1950 : 2021)
+# replicate each integer in vec 2 times
+year_labs <- rep(vec, each = 2) #2 species here
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#graph
+# ggplot(weighted_indexes, aes(x=Year, y=Score, color = species)) +geom_line(size =1)+
+#   labs(y = "Index", title = "Minimum and Maximum FCB Potential of Finfish")+
+#     theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+#       scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))
+
+#SAVE
+# ggsave("FCB_weightedby_molluscs.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+
+
+#ALGAE
+speciesdata2 <- filter(speciesdata, category == "algae")
+
+production_data2 <- filter(production_data, category == "algae")
+
+fmax <- subset(speciesdata2, f == max(f))
+fmin <- subset(speciesdata2, f == min(f))
+
+cmax <- subset(speciesdata2, c == max(c))
+cmin <- subset(speciesdata2, c == min(c))
+
+bmax <- subset(speciesdata2, b == max(b))
+bmin <- subset(speciesdata2, b == min(b))
+
+#combine in a dataframe
+speciesdata2 <- rbind(fmax, fmin)
+
+#Food security
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+#loop through each ALGAE species and multiply f score by (production of algae /production of all species)
+#cat_totals (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$f[i] #get the f score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*weighting_totals[4, b] #multiply score by the taxa's total production in each year, b is 2 which works because the year starts in the second column
+  index <- index/(weighting_totals[1, b]) #weight by production of all species
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+library(tidyr)
+#make long
+weighted_indexes_algae <- pivot_longer(new_frame, cols = -c("species"),
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes_algae <- weighted_indexes_algae[order(weighted_indexes_algae$Year),] #put earlier years first
+
+vec <- c(1950 : 2021)
+# replicate each integer in vec 2 times
+year_labs <- rep(vec, each = 2) #2 species here
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes_algae)) {
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes_algae$Year[i] <- year_labs[i]
+}
+
+weighted_indexes_algae$Year <- as.numeric(weighted_indexes_algae$Year) #make years numeric
+
+
+#MOLLUSCS
+speciesdata2 <- filter(speciesdata, category == "mollusc")
+
+production_data2 <- filter(production_data, category == "mollusc")
+
+fmax <- subset(speciesdata2, f == max(f))
+fmin <- subset(speciesdata2, f == min(f))
+
+cmax <- subset(speciesdata2, c == max(c))
+cmin <- subset(speciesdata2, c == min(c))
+
+bmax <- subset(speciesdata2, b == max(b))
+bmin <- subset(speciesdata2, b == min(b))
+
+#combine in a dataframe
+speciesdata2 <- rbind(fmax, fmin)
+
+#Food security
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+#loop through each mollusc species and multiply f score by (production of mollusc /production of all species)
+#cat_totals (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$f[i] #get the f score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*weighting_totals[6, b] #multiply score by the taxa's total production in each year, b is 2 which works because the year starts in the second column
+  index <- index/(weighting_totals[1, b]) #weight by production of all species
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+library(tidyr)
+#make long
+weighted_indexes_moll <- pivot_longer(new_frame, cols = -c("species"),
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes_moll <- weighted_indexes_moll[order(weighted_indexes_moll$Year),] #put earlier years first
+
+vec <- c(1950 : 2021)
+# replicate each integer in vec 2 times
+year_labs <- rep(vec, each = 2) #2 species here
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes_moll)) {
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes_moll$Year[i] <- year_labs[i]
+}
+
+weighted_indexes_moll$Year <- as.numeric(weighted_indexes_moll$Year) #make years numeric
+
+#CRUSTACEANS
+speciesdata2 <- filter(speciesdata, category == "crustacean")
+
+production_data2 <- filter(production_data, category == "crustacean")
+
+fmax <- subset(speciesdata2, f == max(f))
+fmin <- subset(speciesdata2, f == min(f))
+
+cmax <- subset(speciesdata2, c == max(c))
+cmin <- subset(speciesdata2, c == min(c))
+
+bmax <- subset(speciesdata2, b == max(b))
+bmin <- subset(speciesdata2, b == min(b))
+
+#combine in a dataframe
+speciesdata2 <- rbind(fmax, fmin)
+
+#Food security
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+#loop through each mollusc species and multiply f score by (production of mollusc /production of all species)
+#cat_totals (production in THOUSANDS of tons) and speciesdata (f scores) align
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  f_score <- speciesdata2$f[i] #get the f score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*weighting_totals[5, b] #multiply score by the taxa's total production in each year, b is 2 which works because the year starts in the second column
+  index <- index/(weighting_totals[1, b]) #weight by production of all species
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+library(tidyr)
+#make long
+weighted_indexes_crust <- pivot_longer(new_frame, cols = -c("species"),
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes_crust <- weighted_indexes_crust[order(weighted_indexes_crust$Year),] #put earlier years first
+
+vec <- c(1950 : 2021)
+# replicate each integer in vec 2 times
+year_labs <- rep(vec, each = 2) #2 species here
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes_crust)) {
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes_crust$Year[i] <- year_labs[i]
+}
+
+weighted_indexes_crust$Year <- as.numeric(weighted_indexes_crust$Year) #make years numeric
+```
+
+#combine taxa on the same graph?
+```{r}
+#MERGE, put into one dataframe, all stacked up
+merge <- rbind(weighted_indexes, weighted_indexes_algae, weighted_indexes_moll, weighted_indexes_crust)
+
+#graph
+ggplot(merge, aes(x=Year, y=Score, color = species)) +geom_line(size =1)+
+  labs(y = "Index", title = "Minimum and Maximum Food Potential by Taxa")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+ scale_color_manual(values=c('#7D627F',"orange",'#7D627F',"orange", "pink", "skyblue", "skyblue", "pink"), name = "Taxa")
+
+# 
+#   scale_color_manual(name = "Taxa", values=c('pink', 'skyblue', '#7D627F', "orange"), labels = c("Algae", "Crustaceans", "Finfish", "Molluscs"))
+
+
+```
+
+#OLD
+#use species instead of taxa
+```{r}
+#ALGAE
+speciesdata2 <- filter(speciesdata, category == "algae")
+production_data2 <- filter(production_data, category == "algae")
+
+fmax <- subset(speciesdata2, f == max(f))
+fmin <- subset(speciesdata2, f == min(f))
+
+cmax <- subset(speciesdata2, c == max(c))
+cmin <- subset(speciesdata2, c == min(c))
+
+bmax <- subset(speciesdata2, b == max(b))
+bmin <- subset(speciesdata2, b == min(b))
+
+#combine in a dataframe
+speciesdata2 <- rbind(fmax, fmin)
+
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$f[i] #get the f score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category, need to start at column 3
+  index <- index/(weighting_totals[1, b]) #weight by production of all species, row 1
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+library(tidyr)
+#make long
+weighted_indexes_algae <- pivot_longer(new_frame, cols = -c("species"),
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes_algae <- weighted_indexes_algae[order(weighted_indexes_algae$Year),] #put earlier years first
+
+vec <- c(1950 : 2021)
+# replicate each integer in vec 2 times
+year_labs <- rep(vec, each = 2) #2 species here
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes_algae)) {
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes_algae$Year[i] <- year_labs[i]
+}
+
+weighted_indexes_algae$Year <- as.numeric(weighted_indexes_algae$Year) #make years numeric
+
+ggplot(weighted_indexes_algae, aes(x=Year, y=Score, color = species)) +geom_line(size =1)+
+  labs(y = "Index", title = "Minimum and Maximum FCB Potential of algae")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))
+# +
+#       scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))
+
+###########################################################
+#FINFISH
+speciesdata2 <- filter(speciesdata, category == "finfish_inland" | category =="finfish_marine")
+
+production_data2 <- filter(production_data, category =="finfish_inland"| category =="finfish_marine")
+
+fmax <- subset(speciesdata2, f == max(f))
+fmin <- subset(speciesdata2, f == min(f))
+
+cmax <- subset(speciesdata2, c == max(c))
+cmin <- subset(speciesdata2, c == min(c))
+
+bmax <- subset(speciesdata2, b == max(b))
+bmin <- subset(speciesdata2, b == min(b))
+
+#combine in a dataframe (F)
+speciesdata2 <- rbind(fmax, fmin)
+
+new_frame <- frame #create new frame
+new_frame <- new_frame[FALSE, ]
+
+for (i in 1:nrow(speciesdata2)){ #for each species
+  # print(speciesdata$species[i])
+  f_score <- speciesdata2$f[i] #get the f score
+  
+  for (b in 2:73){ #for each year
+  index <- f_score*production_data2[i, b+1] #multiply score by that species' total production in each year, b+1 because column two is category, need to start at column 3
+  index <- index/(weighting_totals[1, b]) #weight by production of all species, row 1
+  
+  new_frame[i, b] <- index   #add these numbers to the frame
+  new_frame[i, 1] <- speciesdata2[i, 2]#include species
+  } 
+  
+}
+
+library(tidyr)
+#make long
+weighted_indexes <- pivot_longer(new_frame, cols = -c("species"),
+                                names_to = "Year", values_to = "Score")
+
+weighted_indexes <- weighted_indexes[order(weighted_indexes$Year),] #put earlier years first
+
+vec <- c(1950 : 2021)
+# replicate each integer in vec 2 times
+year_labs <- rep(vec, each = 2) #2 species here
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  #replace each year with the actual year number from year_labs
+  
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+ggplot(weighted_indexes, aes(x=Year, y=Score, color = species)) +geom_line(size =1)+
+  labs(y = "Index", title = "Minimum and Maximum food Potential of finfish")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+  ylim(0, 7)
+# +
+#       scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))
+
+#SAME GRAPH
+merge <- rbind(weighted_indexes, weighted_indexes_algae)
+
+#graph
+ggplot(merge, aes(x=Year, y=Score, color = species)) +geom_line(size =1)+
+  labs(y = "Index", title = "Minimum and Maximum Food Security Potential of Finfish and Algae")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(values=c('#7D627F', '#7DBBC3', "pink", "magenta"))
+
+```
+
+#combine taxa on the same graph?
+```{r}
+#MERGE, put into one dataframe, all stacked up
+merge <- rbind(weighted_indexes, weighted_indexes_algae)
+
+#graph
+ggplot(merge, aes(x=Year, y=Score, color = species)) +geom_line(size =1)+
+  labs(y = "Index", title = "Minimum and Maximum Food Security Potential of Finfish and Algae")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(values=c('#7D627F', '#7D627F', "pink", "pink"))
+```
+
+
