@@ -10,18 +10,27 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ############################################################################################
-##TABLE OF CONTENTS
+##TABLE OF CONTENTS--FIX
 STEPS 1-4: See "Spatialdata_prep.Rmd"
 
-STEP 5: FCB scores over time, weighted by regional (Continents + China) production
+STEP 5: Calculating 5-year FCB means for every region, 
 
-STEP 6: Case study countries
+STEP 6: Calculate change in 5-year means
 
-STEP 7: Wilcoxon signed rank tests
+STEP 7: Heatmap of regional scores
 
-STEP 8: Find what percentage of the region's maximum FCB score in is equal to the difference in means 
+STEP 8: Summary stats
+
+STEP 9: Visualize difference in 5-year means with boxplots
+
+STEP 10: Find theoretical FCB max (MFCB) for each region and calculate the percentage of MFCB that is equal to the difference in means
 
 ############################################################################################
+
+```{r}
+library(dplyr)
+library(ggpubr)
+```
 
 ```{r Load in the saved data}
 
@@ -42,7 +51,7 @@ B_weighted_country <- B_weighted_country[, -c(1)]
 ```
 
 ```{r}
-#######FCB data for each country separately? Combine F_weighted_country with C and B ################
+####### Separate FCB data for each country, Combine F_weighted_country with C and B ################
 
 FCB_countries <- cbind(F_weighted_country, C_weighted_country[, c(3)])
 FCB_countries <- cbind(FCB_countries, B_weighted_country[, c(3)])
@@ -60,9 +69,8 @@ Norway <- subset(FCB_countries, Country =="Norway")
 Nigeria <- subset(FCB_countries, Country =="Nigeria")
 ```
 
-
 ```{r}
-#colorblind friendly colors
+#Color palette with colorblind friendly colors
 
 cbPalette1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
@@ -77,273 +85,8 @@ cbPalette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#D55E00", "#CC79A7")
 #   scale_colour_manual(values=cbPalette)
 ```
 
-###STEP 5: FCB scores over time, weighted by regional (Continents + China) production
-```{r}
-setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
-```
-
-```{r Trend lines over time--test}
-
-########## Continents ############
-ggplot(F_weighted_continent, aes(x=Year, y=Score, color = Region)) +geom_line(size =1)+
-  labs(y = "Mean F Index", title = "F Potential of Aquaculture", color = "Continent")+
-    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(values=cbPalette)
-
-ggplot(C_weighted_continent, aes(x=Year, y=Score, color = Region)) +geom_line(size =1)+
-  labs(y = "Mean C Index", title = "C Potential of Aquaculture", color = "Continent")+
-    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(values=cbPalette)+
-  xlim(1980, 2021) #limit
-
-ggplot(B_weighted_continent, aes(x=Year, y=Score, color = Region)) +geom_line(size =1)+
-  labs(y = "Mean B Index", title = "B Potential of Aquaculture", color = "Continent")+
-    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(values=cbPalette)+
-  xlim(1980, 2021) #limit
-
-##################################################################
-
-#Case study countries
-ggplot(F_weighted_country, aes(x=Year, y=Score, color = Country)) +geom_line(size =1)+
-  labs(y = "Mean F Index", title = "F Potential of Aquaculture", color = "Country")+
-    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(values=cbPalette)+
-  ylim(45, 60)+
-  xlim(1980, 2021) #limit to 1980
-```
-
-###Boxplots for different time periods
-```{r Graphing F score distribution in different time periods for continents}
-
-means_3_periods <- F_weighted_continent
-
-means_3_periods$Year[means_3_periods$Year >= 1950 & means_3_periods$Year <= 1980] <- "1950-1980_mean"
-means_3_periods$Year[means_3_periods$Year >= 1981 & means_3_periods$Year <= 2000] <- "1981-2000_mean"
-means_3_periods$Year[means_3_periods$Year >= 2001 & means_3_periods$Year <= 2021] <- "2001-2021_mean"
-
-ggplot(means_3_periods, aes(x = Year, y=Score, color = Region))+ geom_boxplot()+
-  scale_x_discrete(limits = c("1950-1980_mean", "1981-2000_mean", "2001-2021_mean"))+
-  scale_y_continuous(limits = c(47, 55))
-
-#boxplots for two different periods
-now_then_means <- F_weighted_continent
-
-now_then_means <- filter(now_then_means, Year %in% c(1980, 1981, 1982, 1983, 1984, 1985, 2016, 2017, 2018, 2019, 2020, 2021))
-
-now_then_means$Year[now_then_means$Year == 1980 |now_then_means$Year == 1981 |now_then_means$Year == 1982 |now_then_means$Year == 1983 |now_then_means$Year == 1984 |now_then_means$Year == 1985] <- "1980-1985_mean"
-
-now_then_means$Year[now_then_means$Year == 2016 |now_then_means$Year == 2017 |now_then_means$Year == 2018 |now_then_means$Year == 2019 |now_then_means$Year == 2020 |now_then_means$Year == 2021] <- "2016-2021_mean"
-
-ggplot(now_then_means, aes(x = Year, y=Score, color = Region))+ geom_boxplot()+
-  scale_x_discrete(limits = c("1980-1985_mean", "2016-2021_mean"))+
-  scale_y_continuous(limits = c(47, 55))
-```
-
-```{r Graphing just the means, 1980-2000 vs. 2000-2021}
-
-############# F #######################
-mean_80_00 <- F_weighted_continent %>% group_by(Region) %>% 
-  filter(Year >= 1980 & Year <= 2000) %>%
-  summarise(mean_80_00 = mean(Score))
-
-mean_00_21 <- weighted_indexes %>% group_by(Region) %>% 
-  filter(Year >= 2000 & Year <= 2021) %>%
-  summarise(mean_00_21 = mean(Score))
-
-means_2_periods <- merge (mean_80_00, mean_00_21, by = c("Region"))
-
-#make long
-means_2_periods <- pivot_longer(means_2_periods, cols = c(!Region), 
-                                names_to = "Period", values_to = "Mean")
-
-#subtract the current mean from the old mean to find the change
-means_stats_F2 <- means_2_periods %>%
-  group_by(Region) %>%
-  mutate(changeinF = Mean[Period == "mean_00_21"] - Mean[Period =="mean_80_00"])
-
-#plotting
-plot <- ggplot(means_2_periods, aes(x = Period, y=Mean, color = Region))+ geom_boxplot()+
-  scale_x_discrete(limits = c("mean_80_00", "mean_00_21"))+
-  scale_y_continuous(limits = c(40, 60))+
-  labs(y = "Mean F potential")+
-  scale_color_manual(values=cbPalette)
-
-#SAVE
-# ggsave("mean_F_continent_2_periods.png", plot, height = 4, width = 8, dpi = 600)
-
-############# C #######################
-mean_80_00 <- C_weighted_continent %>% group_by(Region) %>% 
-  filter(Year >= 1980 & Year <= 2000) %>%
-  summarise(mean_80_00 = mean(Score))
-
-mean_00_21 <- weighted_indexes %>% group_by(Region) %>% 
-  filter(Year >= 2000 & Year <= 2021) %>%
-  summarise(mean_00_21 = mean(Score))
-
-means_2_periods <- merge (mean_80_00, mean_00_21, by = c("Region"))
-
-#make long
-means_2_periods <- pivot_longer(means_2_periods, cols = c(!Region), 
-                                names_to = "Period", values_to = "Mean")
-
-#subtract the current mean from the old mean to find the change
-means_stats_C2 <- means_2_periods %>%
-  group_by(Region) %>%
-  mutate(changeinC = Mean[Period == "mean_00_21"] - Mean[Period =="mean_80_00"])
-
-#plotting
-plot <- ggplot(means_2_periods, aes(x = Period, y=Mean, color = Region))+ geom_boxplot()+
-  scale_x_discrete(limits = c("mean_80_00", "mean_00_21"))+
-  scale_y_continuous(limits = c(40, 60))+
-  labs(y = "Mean C potential")
-
-#SAVE
-# ggsave("mean_C_continent_2_periods.png", plot, height = 4, width = 8, dpi = 600)
-
-############# B #######################
-mean_80_00 <- B_weighted_continent %>% group_by(Region) %>% 
-  filter(Year >= 1980 & Year <= 2000) %>%
-  summarise(mean_80_00 = mean(Score))
-
-mean_00_21 <- weighted_indexes %>% group_by(Region) %>% 
-  filter(Year >= 2000 & Year <= 2021) %>%
-  summarise(mean_00_21 = mean(Score))
-
-means_2_periods <- merge (mean_80_00, mean_00_21, by = c("Region"))
-
-#make long
-means_2_periods <- pivot_longer(means_2_periods, cols = c(!Region), 
-                                names_to = "Period", values_to = "Mean")
-
-means_stats_B2 <- means_2_periods %>%
-  group_by(Region) %>%
-  mutate(changeinB = Mean[Period == "mean_00_21"] - Mean[Period =="mean_80_00"])
-
-#plotting
-plot <- ggplot(means_2_periods, aes(x = Period, y=Mean, color = Region))+ geom_boxplot()+
-  scale_x_discrete(limits = c("mean_80_00", "mean_00_21"))+
-  scale_y_continuous(limits = c(40, 65))+
-  labs(y = "Mean B potential")
-
-#SAVE
-# ggsave("mean_B_continent_2_periods.png", plot, height = 4, width = 8, dpi = 600)
-
-#Combine stats (change in FCB indices) into one graph
-mean_stats2 <- cbind(means_stats_F2, means_stats_C2[, c(4)])
-mean_stats2 <- cbind(mean_stats2, means_stats_B2[, c(4)])
-
-mean_stats2 <- mean_stats2 %>%
-  subset(Period == "mean_80_00")
-mean_stats2 <- mean_stats2[, -c(2, 3)]#remove extra columns
-```
-
-#why did we choose the baseline 1980??
-```{r Comparing the mean of the last 5 years to baseline 1980-1985} 
-
-#5-year average for each continent for: (1980-1985) and (2016-2021)
-
-########## F ################
-mean_80_85 <- F_weighted_continent %>% group_by(Region) %>% 
-  filter(Year %in% c(1980, 1981, 1982, 1983, 1984, 1985)) %>%
-  summarise(mean_80_85 = mean(Score))
-
-mean_16_21 <- F_weighted_continent %>% group_by(Region) %>% 
-  filter(Year %in% c( 2016, 2017, 2018, 2019, 2020, 2021)) %>%
-  summarise(mean_16_21 = mean(Score))
-
-means <- merge(mean_80_85, mean_16_21, by = c("Region"))
-
-#make long
-means <- pivot_longer(means, cols = c(!Region),
-                                names_to = "Period", values_to = "Mean")
-
-#subtract the current mean from the old mean to find the change
-means_stats_F <- means %>%
-  group_by(Region) %>%
-  mutate(changeinF = Mean[Period == "mean_16_21"] - Mean[Period =="mean_80_85"])
-
-ggplot(means, aes(x = Period, y=Mean, color = Region))+ geom_boxplot()+
-  scale_x_discrete(limits = c("mean_80_85", "mean_16_21"), labels = c("1980 - 1985", "2016 - 2021"))+
-  labs(y = "Mean F Index")+
-  scale_color_manual(values=cbPalette)
-  # scale_y_continuous(limits = c(40, 70))
-
-# ggsave("mean_F_continent_recent_vs_80.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
-
-########## C ################
-mean_80_85 <- C_weighted_continent %>% group_by(Region) %>% 
-  filter(Year %in% c(1980, 1981, 1982, 1983, 1984, 1985)) %>%
-  summarise(mean_80_85 = mean(Score))
-
-mean_16_21 <- C_weighted_continent %>% group_by(Region) %>% 
-  filter(Year %in% c( 2016, 2017, 2018, 2019, 2020, 2021)) %>%
-  summarise(mean_16_21 = mean(Score))
-
-means <- merge(mean_80_85, mean_16_21, by = c("Region"))
-
-#make long
-means <- pivot_longer(means, cols = c(!Region),
-                                names_to = "Period", values_to = "Mean")
-
-#subtract the current mean from the old mean to find the change
-means_stats_C <- means %>%
-  group_by(Region) %>%
-  mutate(changeinC = Mean[Period == "mean_16_21"] - Mean[Period =="mean_80_85"])
-
-
-ggplot(means, aes(x = Period, y=Mean, color = Region))+ geom_boxplot()+
-  scale_x_discrete(limits = c("mean_80_85", "mean_16_21"))+
-  labs(y = "Mean C Index")
-  # scale_y_continuous(limits = c(40, 70))
-
-# ggsave("mean_C_continent_recent_vs_80.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
-
-########## B ################
-mean_80_85 <- B_weighted_continent %>% group_by(Region) %>% 
-  filter(Year %in% c(1980, 1981, 1982, 1983, 1984, 1985)) %>%
-  summarise(mean_80_85 = mean(Score))
-
-mean_16_21 <- B_weighted_continent %>% group_by(Region) %>% 
-  filter(Year %in% c( 2016, 2017, 2018, 2019, 2020, 2021)) %>%
-  summarise(mean_16_21 = mean(Score))
-
-means <- merge(mean_80_85, mean_16_21, by = c("Region"))
-
-#make long
-means <- pivot_longer(means, cols = c(!Region),
-                                names_to = "Period", values_to = "Mean")
-
-#subtract the current mean from the old mean to find the change
-means_stats_B <- means %>%
-  group_by(Region) %>%
-  mutate(changeinB = Mean[Period == "mean_16_21"] - Mean[Period =="mean_80_85"])
-
-
-ggplot(means, aes(x = Period, y=Mean, color = Region))+ geom_boxplot()+
-  scale_x_discrete(limits = c("mean_80_85", "mean_16_21"))+
-  labs(y = "Mean B Index")
-  # scale_y_continuous(limits = c(40, 70))
-
-# ggsave("mean_C_continent_recent_vs_80.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
-
-#Combine stats (change in FCB indices) into one graph
-mean_stats <- cbind(means_stats_F, means_stats_C[, c(4)])
-mean_stats <- cbind(mean_stats, means_stats_B[, c(4)])
-
-mean_stats <- mean_stats %>%
-  subset(Period == "mean_80_85")
-mean_stats <- mean_stats[, -c(2, 3)]#remove extra columns
-
-#########################################################
-#Trying a different baseline...compare recent most 5 years to the mean from 1980-2016? Means of different length time periods?
-
- #tinker with the comparison time periods
-
-```
-
-###STEP 6: Case study countries
-```{r FCB one graph per country}
+### Preliminary visualization of FCB trends in case study countries
+```{r FCB trends over time; one graph per country}
 
 #Just China
 ChinaFCB <- ggplot(China, aes(x=Year, y=Score, color=Index)) + geom_line(size=1) + labs(title = "FCB Potential of Aquaculture in China") +
@@ -363,106 +106,192 @@ case_study_FCB_facet <- ggplot(FCB_countries, aes(Year, y=Score, color=Index))+
 # ggsave("Case_study_FCB.png", case_study_FCB_facet, height = 4, width = 8, dpi = 600)
 ```
 
-#########################################################
-#Try a different baseline? Compare recent most 5 years to the mean from 1980-2016? Means of different length time periods?
- 
-```{r Comparing the mean of the last 5 years to baseline 1980-1985} 
+###STEP 5: Calculating 5-year FCB means for every region #######
+```{r Organizing the data--get just the years we want}
 
-#5-year average for each country for: (1980-1985) and (2016-2021)
+#### FCB means of continents #########
+now_then_meansV2 <- cbind(F_weighted_continent, C_weighted_continent[, c(3)])
+now_then_meansV2 <- cbind(now_then_meansV2, B_weighted_continent[, c(3)])
+names(now_then_meansV2)[3] <- "Food"
+names(now_then_meansV2)[4] <- "Climate"
+names(now_then_meansV2)[5] <- "Biodiversity"
 
-########## F ################
-mean_80_85 <- F_weighted_country %>% group_by(Country) %>% 
-  filter(Year %in% c(1980, 1981, 1982, 1983, 1984, 1985)) %>%
-  summarise(mean_80_85 = mean(Score))
+now_then_meansV2 <- filter(now_then_meansV2, Year %in% c(1980, 1981, 1982, 1983, 1984, 1985, 2016, 2017, 2018, 2019, 2020, 2021))
 
-mean_16_21 <- F_weighted_country %>% group_by(Country) %>% 
-  filter(Year %in% c( 2016, 2017, 2018, 2019, 2020, 2021)) %>%
-  summarise(mean_16_21 = mean(Score))
+##### F ########
+now_then_meansF <- now_then_meansV2[, c(1:3)]
+now_then_meansF <- now_then_meansF %>%
+  pivot_wider(names_from = "Region", values_from = "Food")
 
-means <- merge(mean_80_85, mean_16_21, by = c("Country"))
+now_then_meansF$Year[now_then_meansF$Year == 1980 |now_then_meansF$Year == 1981 |now_then_meansF$Year == 1982 |now_then_meansF$Year == 1983 |now_then_meansF$Year == 1984 |now_then_meansF$Year == 1985] <- "1980-1985_mean"
 
-#make long
-means <- pivot_longer(means, cols = c(!Country),
-                                names_to = "Period", values_to = "Mean")
+now_then_meansF$Year[now_then_meansF$Year == 2016 |now_then_meansF$Year == 2017 |now_then_meansF$Year == 2018 |now_then_meansF$Year == 2019 |now_then_meansF$Year == 2020 |now_then_meansF$Year == 2021] <- "2016-2021_mean"
+
+###### C ##########
+now_then_meansC <- now_then_meansV2[, c(1, 2, 4)]
+now_then_meansC <- now_then_meansC %>%
+  pivot_wider(names_from = "Region", values_from = "Climate")
+
+now_then_meansC$Year[now_then_meansC$Year == 1980 |now_then_meansC$Year == 1981 |now_then_meansC$Year == 1982 |now_then_meansC$Year == 1983 |now_then_meansC$Year == 1984 |now_then_meansC$Year == 1985] <- "1980-1985_mean"
+
+now_then_meansC$Year[now_then_meansC$Year == 2016 |now_then_meansC$Year == 2017 |now_then_meansC$Year == 2018 |now_then_meansC$Year == 2019 |now_then_meansC$Year == 2020 |now_then_meansC$Year == 2021] <- "2016-2021_mean"
+
+######## B ############
+now_then_meansB <- now_then_meansV2[, c(1, 2, 5)]
+now_then_meansB <- now_then_meansB %>%
+  pivot_wider(names_from = "Region", values_from = "Biodiversity")
+
+now_then_meansB$Year[now_then_meansB$Year == 1980 |now_then_meansB$Year == 1981 |now_then_meansB$Year == 1982 |now_then_meansB$Year == 1983 |now_then_meansB$Year == 1984 |now_then_meansB$Year == 1985] <- "1980-1985_mean"
+
+now_then_meansB$Year[now_then_meansB$Year == 2016 |now_then_meansB$Year == 2017 |now_then_meansB$Year == 2018 |now_then_meansB$Year == 2019 |now_then_meansB$Year == 2020 |now_then_meansB$Year == 2021] <- "2016-2021_mean"
+
+######################################################################################
+
+#### FCB means of countries #########
+FCB_countries <- cbind(F_weighted_country, C_weighted_country[, c(3)])
+FCB_countries <- cbind(FCB_countries, B_weighted_country[, c(3)])
+names(FCB_countries)[3] <- "Food" #rename columns as F, C and B
+names(FCB_countries)[4] <- "Climate"
+names(FCB_countries)[5] <- "Biodiversity"
+
+FCB_countries <- filter(FCB_countries, Year %in% c(1980, 1981, 1982, 1983, 1984, 1985, 2016, 2017, 2018, 2019, 2020, 2021))
+
+######## F ############
+country_now_then_meansF <- FCB_countries[, c(1:3)]
+country_now_then_meansF <- country_now_then_meansF %>%
+  pivot_wider(names_from = "Country", values_from = "Food")
+
+country_now_then_meansF$Year[country_now_then_meansF$Year == 1980 |country_now_then_meansF$Year == 1981 |country_now_then_meansF$Year == 1982 |country_now_then_meansF$Year == 1983 |country_now_then_meansF$Year == 1984 |country_now_then_meansF$Year == 1985] <- "1980-1985_mean"
+
+country_now_then_meansF$Year[country_now_then_meansF$Year == 2016 |country_now_then_meansF$Year == 2017 |country_now_then_meansF$Year == 2018 |country_now_then_meansF$Year == 2019 |country_now_then_meansF$Year == 2020 |country_now_then_meansF$Year == 2021] <- "2016-2021_mean"
+
+######## C ############
+country_now_then_meansC <- FCB_countries[, c(1, 2, 4)]
+country_now_then_meansC <- country_now_then_meansC %>%
+  pivot_wider(names_from = "Country", values_from = "Climate")
+
+country_now_then_meansC$Year[country_now_then_meansC$Year == 1980 |country_now_then_meansC$Year == 1981 |country_now_then_meansC$Year == 1982 |country_now_then_meansC$Year == 1983 |country_now_then_meansC$Year == 1984 |country_now_then_meansC$Year == 1985] <- "1980-1985_mean"
+
+country_now_then_meansC$Year[country_now_then_meansC$Year == 2016 |country_now_then_meansC$Year == 2017 |country_now_then_meansC$Year == 2018 |country_now_then_meansC$Year == 2019 |country_now_then_meansC$Year == 2020 |country_now_then_meansC$Year == 2021] <- "2016-2021_mean"
+
+######## B ############
+country_now_then_meansB <- FCB_countries[, c(1, 2, 5)]
+country_now_then_meansB <- country_now_then_meansB %>%
+  pivot_wider(names_from = "Country", values_from = "Biodiversity")
+
+country_now_then_meansB$Year[country_now_then_meansB$Year == 1980 |country_now_then_meansB$Year == 1981 |country_now_then_meansB$Year == 1982 |country_now_then_meansB$Year == 1983 |country_now_then_meansB$Year == 1984 |country_now_then_meansB$Year == 1985] <- "1980-1985_mean"
+
+country_now_then_meansB$Year[country_now_then_meansB$Year == 2016 |country_now_then_meansB$Year == 2017 |country_now_then_meansB$Year == 2018 |country_now_then_meansB$Year == 2019 |country_now_then_meansB$Year == 2020 |country_now_then_meansB$Year == 2021] <- "2016-2021_mean"
+```
+
+### STEP 6: Calculate change in 5-year means ####
+```{r Rearrange data, mutate column with change in F, C, B: means, means_stats_F, mean_stats_country}
+
+### CONTINENTS #################
+
+#### F ####
+means <- pivot_longer(now_then_meansF, cols = c(!Year),
+                                names_to = "Region", values_to = "Mean") #make long
+
+means<- means %>% 
+  group_by(Region, Year) %>%
+  summarise(mean = mean(Mean))
 
 #subtract the current mean from the old mean to find the change
 means_stats_F <- means %>%
-  group_by(Country) %>%
-  mutate(changeinF = Mean[Period == "mean_16_21"] - Mean[Period =="mean_80_85"])
+  group_by(Region) %>%
+  mutate(changeinF = mean[Year == "2016-2021_mean"] - mean[Year =="1980-1985_mean"])
 
-ggplot(means_stats_F, aes(x = Period, y=Mean, color = Country))+ geom_boxplot()+
-  scale_x_discrete(limits = c("mean_80_85", "mean_16_21"))+
-  labs(y = "Mean F Index")
-  # scale_y_continuous(limits = c(40, 70))
+# ggplot(means, aes(x = Year, y=mean, color = Region))+ geom_boxplot()+
+#   scale_x_discrete(limits = c("1980-1985_mean", "2016-2021_mean"), labels = c("1980 - 1985", "2016 - 2021"))+
+#   labs(y = "Mean F Index")+
+#   scale_color_manual(values=cbPalette)
 
-# ggsave("mean_F_country_recent_vs_80.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+#### C ####
+means <- pivot_longer(now_then_meansC, cols = c(!Year),
+                                names_to = "Region", values_to = "Mean") #make long
 
-########## C ################
-mean_80_85 <- C_weighted_country %>% group_by(Country) %>% 
-  filter(Year %in% c(1980, 1981, 1982, 1983, 1984, 1985)) %>%
-  summarise(mean_80_85 = mean(Score))
-
-mean_16_21 <- C_weighted_country %>% group_by(Country) %>% 
-  filter(Year %in% c( 2016, 2017, 2018, 2019, 2020, 2021)) %>%
-  summarise(mean_16_21 = mean(Score))
-
-means <- merge(mean_80_85, mean_16_21, by = c("Country"))
-
-#make long
-means <- pivot_longer(means, cols = c(!Country),
-                                names_to = "Period", values_to = "Mean")
+means<- means %>% 
+  group_by(Region, Year) %>%
+  summarise(mean = mean(Mean))
 
 #subtract the current mean from the old mean to find the change
 means_stats_C <- means %>%
-  group_by(Country) %>%
-  mutate(changeinC = Mean[Period == "mean_16_21"] - Mean[Period =="mean_80_85"])
+  group_by(Region) %>%
+  mutate(changeinC = mean[Year == "2016-2021_mean"] - mean[Year =="1980-1985_mean"])
 
+#### B ####
+means <- pivot_longer(now_then_meansB, cols = c(!Year),
+                                names_to = "Region", values_to = "Mean") #make long
 
-ggplot(means, aes(x = Period, y=Mean, color = Country))+ geom_boxplot()+
-  scale_x_discrete(limits = c("mean_80_85", "mean_16_21"))+
-  labs(y = "Mean C Index")
-  # scale_y_continuous(limits = c(40, 70))
-
-# ggsave("mean_C_country_recent_vs_80.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
-
-########## B ################
-mean_80_85 <- B_weighted_country %>% group_by(Country) %>% 
-  filter(Year %in% c(1980, 1981, 1982, 1983, 1984, 1985)) %>%
-  summarise(mean_80_85 = mean(Score))
-
-mean_16_21 <- B_weighted_country %>% group_by(Country) %>% 
-  filter(Year %in% c( 2016, 2017, 2018, 2019, 2020, 2021)) %>%
-  summarise(mean_16_21 = mean(Score))
-
-means <- merge(mean_80_85, mean_16_21, by = c("Country"))
-
-#make long
-means <- pivot_longer(means, cols = c(!Country),
-                                names_to = "Period", values_to = "Mean")
+means<- means %>% 
+  group_by(Region, Year) %>%
+  summarise(mean = mean(Mean))
 
 #subtract the current mean from the old mean to find the change
 means_stats_B <- means %>%
-  group_by(Country) %>%
-  mutate(changeinB = Mean[Period == "mean_16_21"] - Mean[Period =="mean_80_85"])
+  group_by(Region) %>%
+  mutate(changeinB = mean[Year == "2016-2021_mean"] - mean[Year =="1980-1985_mean"])
 
 
-ggplot(means, aes(x = Period, y=Mean, color = Country))+ geom_boxplot()+
-  scale_x_discrete(limits = c("mean_80_85", "mean_16_21"))+
-  labs(y = "Mean B Index")
-  # scale_y_continuous(limits = c(40, 70))
+#Combine stats (change in FCB indices) into one table
+mean_stats <- cbind(means_stats_F, means_stats_C[, c(4)])
+mean_stats <- cbind(mean_stats, means_stats_B[, c(4)])
 
-# ggsave("mean_B_country_recent_vs_80.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+mean_stats <- mean_stats %>%
+  subset(Year == "1980-1985_mean") #remove duplicates
+mean_stats <- mean_stats[, -c(2, 3)]#remove extra columns
+
+############ COUNTRIES #######
+#### F ####
+means <- pivot_longer(country_now_then_meansF, cols = c(!Year),
+                                names_to = "Region", values_to = "Mean") #make long
+
+means<- means %>% 
+  group_by(Region, Year) %>%
+  summarise(mean = mean(Mean))
+
+#subtract the current mean from the old mean to find the change
+means_stats_F <- means %>%
+  group_by(Region) %>%
+  mutate(changeinF = mean[Year == "2016-2021_mean"] - mean[Year =="1980-1985_mean"])
+
+#### C ####
+means <- pivot_longer(country_now_then_meansC, cols = c(!Year),
+                                names_to = "Region", values_to = "Mean") #make long
+
+means<- means %>% 
+  group_by(Region, Year) %>%
+  summarise(mean = mean(Mean))
+
+#subtract the current mean from the old mean to find the change
+means_stats_C <- means %>%
+  group_by(Region) %>%
+  mutate(changeinC = mean[Year == "2016-2021_mean"] - mean[Year =="1980-1985_mean"])
+
+#### B ####
+means <- pivot_longer(country_now_then_meansB, cols = c(!Year),
+                                names_to = "Region", values_to = "Mean") #make long
+
+means<- means %>% 
+  group_by(Region, Year) %>%
+  summarise(mean = mean(Mean))
+
+#subtract the current mean from the old mean to find the change
+means_stats_B <- means %>%
+  group_by(Region) %>%
+  mutate(changeinB = mean[Year == "2016-2021_mean"] - mean[Year =="1980-1985_mean"])
 
 #Combine stats (change in FCB indices) into one graph
 mean_stats_country <- cbind(means_stats_F, means_stats_C[, c(4)])
 mean_stats_country <- cbind(mean_stats_country, means_stats_B[, c(4)])
 
 mean_stats_country <- mean_stats_country %>%
-  subset(Period == "mean_80_85")
-mean_stats_country <- mean_stats_country[, -c(2, 3)]#remove extra columns
+  subset(Year == "1980-1985_mean") #remove duplicates
+mean_stats_country <- mean_stats_country[, -c(2, 3)]#remove extra column
 ```
 
-###Extracting just the means for every region in 2021 and the 2016-2021 mean for a figure
+###STEP 7: Heatmap of regional scores ########
 ```{r}
 
 setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
@@ -563,653 +392,333 @@ plot <- ggplot(heatmapdata, aes(y= index, x = Region, fill= score)) +
   theme(axis.title.x = element_blank(),
         axis.title.y=element_blank(),
         axis.text.y = element_text(size = 15),
-        axis.text.x = element_text(size = 10, angle = 15)
-        )+
-  scale_y_discrete(limits = c('Biodiversity', 'Climate', 'Food'), labels = c("B", "C", "F"))
+        axis.text.x = element_text(size = 10, angle = 15))+
+  scale_y_discrete(limits = c('Biodiversity', 'Climate', 'Food'), labels = c("B", "C", "F"))+
+   scale_x_discrete(limits = c('Chile', 'China','Nigeria','Norway', 'Africa', 'Americas', 'Asia','Europe','Oceania'), labels = c('Chile', 'China','Nigeria','Norway', 'Africa', 'Americas', 'Asia','Europe','Oceania'))
+
 
 #save
 # ggsave("FCB_2016_2021_heatmap.png", plot, height = 4, width = 8, dpi = 600)
 ```
 
-###STEP 7: Stats tests #############
-######### Comparing the mean FCB indices (1980 - 1985) vs. (2016 - 2021)
-
-Using a non-parametric test (Wilcoxon signed rank test) to compare the means because the sample size is so small that it contains little information about its underlying distribution and the normal distribution test has low power.
-
-Wilcoxon signed rank test: non-normally distributed, but "differences between paired samples should be distributed symmetrically around the median"
-
-Paired samples
-
+###STEP 8: SUMMARY STATS #############
 ```{r}
-library(dplyr)
-library(ggpubr)
-```
 
-```{r Organizing the data--get just the years we want}
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
+library(gridExtra)
 
-#### FCB means of continents #########
-now_then_meansV2 <- cbind(F_weighted_continent, C_weighted_continent[, c(3)])
-now_then_meansV2 <- cbind(now_then_meansV2, B_weighted_continent[, c(3)])
-names(now_then_meansV2)[3] <- "Food"
-names(now_then_meansV2)[4] <- "Climate"
-names(now_then_meansV2)[5] <- "Biodiversity"
+test <- rbind(mean_stats[c(1:3, 5:6), ], mean_stats_country)
 
-now_then_meansV2 <- filter(now_then_meansV2, Year %in% c(1980, 1981, 1982, 1983, 1984, 1985, 2016, 2017, 2018, 2019, 2020, 2021))
-
-##### F ########
-now_then_meansF <- now_then_meansV2[, c(1:3)]
-now_then_meansF <- now_then_meansF %>%
-  pivot_wider(names_from = "Region", values_from = "Food")
-
-now_then_meansF$Year[now_then_meansF$Year == 1980 |now_then_meansF$Year == 1981 |now_then_meansF$Year == 1982 |now_then_meansF$Year == 1983 |now_then_meansF$Year == 1984 |now_then_meansF$Year == 1985] <- "1980-1985_mean"
-
-now_then_meansF$Year[now_then_meansF$Year == 2016 |now_then_meansF$Year == 2017 |now_then_meansF$Year == 2018 |now_then_meansF$Year == 2019 |now_then_meansF$Year == 2020 |now_then_meansF$Year == 2021] <- "2016-2021_mean"
-
-###### C ##########
-now_then_meansC <- now_then_meansV2[, c(1, 2, 4)]
-now_then_meansC <- now_then_meansC %>%
-  pivot_wider(names_from = "Region", values_from = "Climate")
-
-now_then_meansC$Year[now_then_meansC$Year == 1980 |now_then_meansC$Year == 1981 |now_then_meansC$Year == 1982 |now_then_meansC$Year == 1983 |now_then_meansC$Year == 1984 |now_then_meansC$Year == 1985] <- "1980-1985_mean"
-
-now_then_meansC$Year[now_then_meansC$Year == 2016 |now_then_meansC$Year == 2017 |now_then_meansC$Year == 2018 |now_then_meansC$Year == 2019 |now_then_meansC$Year == 2020 |now_then_meansC$Year == 2021] <- "2016-2021_mean"
-
-######## B ############
-now_then_meansB <- now_then_meansV2[, c(1, 2, 5)]
-now_then_meansB <- now_then_meansB %>%
-  pivot_wider(names_from = "Region", values_from = "Biodiversity")
-
-now_then_meansB$Year[now_then_meansB$Year == 1980 |now_then_meansB$Year == 1981 |now_then_meansB$Year == 1982 |now_then_meansB$Year == 1983 |now_then_meansB$Year == 1984 |now_then_meansB$Year == 1985] <- "1980-1985_mean"
-
-now_then_meansB$Year[now_then_meansB$Year == 2016 |now_then_meansB$Year == 2017 |now_then_meansB$Year == 2018 |now_then_meansB$Year == 2019 |now_then_meansB$Year == 2020 |now_then_meansB$Year == 2021] <- "2016-2021_mean"
-
-######################################################################################
-
-#### FCB means of countries #########
-FCB_countries <- cbind(F_weighted_country, C_weighted_country[, c(3)])
-FCB_countries <- cbind(FCB_countries, B_weighted_country[, c(3)])
-names(FCB_countries)[3] <- "Food" #rename columns as F, C and B
-names(FCB_countries)[4] <- "Climate"
-names(FCB_countries)[5] <- "Biodiversity"
-
-FCB_countries <- filter(FCB_countries, Year %in% c(1980, 1981, 1982, 1983, 1984, 1985, 2016, 2017, 2018, 2019, 2020, 2021))
-
-######## F ############
-country_now_then_meansF <- FCB_countries[, c(1:3)]
-country_now_then_meansF <- country_now_then_meansF %>%
-  pivot_wider(names_from = "Country", values_from = "Food")
-
-country_now_then_meansF$Year[country_now_then_meansF$Year == 1980 |country_now_then_meansF$Year == 1981 |country_now_then_meansF$Year == 1982 |country_now_then_meansF$Year == 1983 |country_now_then_meansF$Year == 1984 |country_now_then_meansF$Year == 1985] <- "1980-1985_mean"
-
-country_now_then_meansF$Year[country_now_then_meansF$Year == 2016 |country_now_then_meansF$Year == 2017 |country_now_then_meansF$Year == 2018 |country_now_then_meansF$Year == 2019 |country_now_then_meansF$Year == 2020 |country_now_then_meansF$Year == 2021] <- "2016-2021_mean"
-
-######## C ############
-country_now_then_meansC <- FCB_countries[, c(1, 2, 4)]
-country_now_then_meansC <- country_now_then_meansC %>%
-  pivot_wider(names_from = "Country", values_from = "Climate")
-
-country_now_then_meansC$Year[country_now_then_meansC$Year == 1980 |country_now_then_meansC$Year == 1981 |country_now_then_meansC$Year == 1982 |country_now_then_meansC$Year == 1983 |country_now_then_meansC$Year == 1984 |country_now_then_meansC$Year == 1985] <- "1980-1985_mean"
-
-country_now_then_meansC$Year[country_now_then_meansC$Year == 2016 |country_now_then_meansC$Year == 2017 |country_now_then_meansC$Year == 2018 |country_now_then_meansC$Year == 2019 |country_now_then_meansC$Year == 2020 |country_now_then_meansC$Year == 2021] <- "2016-2021_mean"
-
-######## B ############
-country_now_then_meansB <- FCB_countries[, c(1, 2, 5)]
-country_now_then_meansB <- country_now_then_meansB %>%
-  pivot_wider(names_from = "Country", values_from = "Biodiversity")
-
-country_now_then_meansB$Year[country_now_then_meansB$Year == 1980 |country_now_then_meansB$Year == 1981 |country_now_then_meansB$Year == 1982 |country_now_then_meansB$Year == 1983 |country_now_then_meansB$Year == 1984 |country_now_then_meansB$Year == 1985] <- "1980-1985_mean"
-
-country_now_then_meansB$Year[country_now_then_meansB$Year == 2016 |country_now_then_meansB$Year == 2017 |country_now_then_meansB$Year == 2018 |country_now_then_meansB$Year == 2019 |country_now_then_meansB$Year == 2020 |country_now_then_meansB$Year == 2021] <- "2016-2021_mean"
-```
-
-#FIX 
-```{r Testing assumptions of variance for continents}
-
-mice2 <- mice2 %>% mutate(differences = after - before)
-gghistogram(mice2, x = "differences", y = "..density..", 
-            fill = "steelblue",bins = 5, add_density = TRUE)
-
-country_now_then_meansF <- FCB_countries[, c(1:3)]
-country_now_then_meansF <- country_now_then_meansF %>%
-  pivot_wider(names_from = "Country", values_from = "Food")
-
-country_now_then_meansF$Year[country_now_then_meansF$Year == 1980 |country_now_then_meansF$Year == 1981 |country_now_then_meansF$Year == 1982 |country_now_then_meansF$Year == 1983 |country_now_then_meansF$Year == 1984 |country_now_then_meansF$Year == 1985] <- "before"
-
-country_now_then_meansF$Year[country_now_then_meansF$Year == 2016 |country_now_then_meansF$Year == 2017 |country_now_then_meansF$Year == 2018 |country_now_then_meansF$Year == 2019 |country_now_then_meansF$Year == 2020 |country_now_then_meansF$Year == 2021] <- "after"
-
-testing <- country_now_then_meansF[, c(1, 2)]
-
-testing %>% mutate(differences = Year[after] - Year[before])
-
-
-##Density plots and QQ plots to visually inspect distribution
-ggdensity(now_then_meansF$Africa, 
-          main = "Density plot of d",
-          xlab = "index")
-
-#Shapiro-wilk to test if the variable d (differences between paired samples) is normally distributed
-
-```
-
-```{r Continents--Wilcox}
-############### F ################## 
-
-#store the continents' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 6, ncol = 2))
-names(table)[1] <- "Continent"
-names(table)[2] <- "p_value"
-
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:7) { #for each continent
-  column <- now_then_meansF[, i]
-  print(column)
-
-  continent_name <- colnames(now_then_meansF[i]) #fix
-  print(continent_name)
-
-  res <- wilcox.test(unlist(column) ~ Year, data = now_then_meansF, paired = TRUE)
-
-  p <- res$p.value
-  
-  if(p > 0.05) { table$p_value[i-1] <- p #store in table
-  } else
-    table$p_value[i-1] <- "p < 0.05"
-  
-
-  # #store in table
-  # table$p_value[i-1] <- p
-  table$Continent[i-1] <- continent_name
-}
-
-Continent_F_pvals <- table
-
-############### C ################## 
-
-#store the continents' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 6, ncol = 2))
-names(table)[1] <- "Continent"
-names(table)[2] <- "p_value"
-
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:7) { #for each continent
-  column <- now_then_meansC[, i]
-  print(column)
-
-  continent_name <- colnames(now_then_meansC[i]) #fix
-  print(continent_name)
-
-  res <- wilcox.test(unlist(column) ~ Year, data = now_then_meansC, paired = TRUE)
-
-  p <- res$p.value
-  
-  if(p > 0.05) { table$p_value[i-1] <- p #store in table
-  } else
-    table$p_value[i-1] <- "p < 0.05"
-  
-
-  # #store in table
-  # table$p_value[i-1] <- p
-  table$Continent[i-1] <- continent_name
-}
-
-Continent_C_pvals <- table
-
-############### B ################## 
-
-#store the continents' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 6, ncol = 2))
-names(table)[1] <- "Continent"
-names(table)[2] <- "p_value"
-
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:7) { #for each continent
-  column <- now_then_meansB[, i]
-  print(column)
-
-  continent_name <- colnames(now_then_meansB[i]) #fix
-  print(continent_name)
-
-  res <- wilcox.test(unlist(column) ~ Year, data = now_then_meansB, paired = TRUE)
-
-  p <- res$p.value
-  
-  if(p > 0.05) { table$p_value[i-1] <- p #store in table
-  } else
-    table$p_value[i-1] <- "p < 0.05"
-  
-
-  # #store in table
-  # table$p_value[i-1] <- p
-  table$Continent[i-1] <- continent_name
-}
-
-Continent_B_pvals <- table
-
-######### combine into one table ####
-Continent_FCB_pvals <- cbind(Continent_F_pvals, Continent_C_pvals[, c(2)])
-Continent_FCB_pvals <- cbind(Continent_FCB_pvals, Continent_B_pvals[, (2)])
-names(Continent_FCB_pvals)[2] <- "Change in F Index Mean"
-names(Continent_FCB_pvals)[3] <- "Change in C Index Mean"
-names(Continent_FCB_pvals)[4] <- "Change in B Index Mean"
-
-```
-
-```{r Countries--Wilcox}
-
-#store the countries' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 4, ncol = 2))
-names(table)[1] <- "Country"
-names(table)[2] <- "p_value"
-
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:5) { #for each continent
-  column <- country_now_then_meansF[, i]
-  print(column)
-
-  continent_name <- colnames(country_now_then_meansF[i]) #fix
-  print(continent_name)
-
-  res <- wilcox.test(unlist(column) ~ Year, data = country_now_then_meansF, paired = TRUE)
-
-  p <- res$p.value
-
-  #store in table
-  if(p > 0.05) { table$p_value[i-1] <- p #store in table
-  } else
-    table$p_value[i-1] <- "p < 0.05"
-  
-  table$Country[i-1] <- continent_name
-}
-
-Country_F_pvals <- table
-
-###### C ##########
-
-#store the continents' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 4, ncol = 2))
-names(table)[1] <- "Country"
-names(table)[2] <- "p_value"
-
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:5) { #for each continent
-  column <- country_now_then_meansC[, i]
-  print(column)
-
-  continent_name <- colnames(country_now_then_meansC[i]) #fix
-  print(continent_name)
-
-  res <- wilcox.test(unlist(column) ~ Year, data = country_now_then_meansC, paired = TRUE)
-
-  p <- res$p.value
-
-  #store in table
-  if(p > 0.05) { table$p_value[i-1] <- p #store in table
-  } else
-    table$p_value[i-1] <- "p < 0.05"
-  
-  table$Country[i-1] <- continent_name
-}
-
-Country_C_pvals <- table
-
-######## B ############
-#store the continents' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 4, ncol = 2))
-names(table)[1] <- "Country"
-names(table)[2] <- "p_value"
-
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:5) { #for each continent
-  column <- country_now_then_meansB[, i]
-  # print(column)
-
-  continent_name <- colnames(country_now_then_meansB[i]) #fix
-  print(continent_name)
-
-  res <- wilcox.test(unlist(column) ~ Year, data = country_now_then_meansB, paired = TRUE)
-
-  p <- res$p.value
-  print(p)
-
-  #store in table
-  if(p > 0.05) { table$p_value[i-1] <- p #store in table
-  } else
-    table$p_value[i-1] <- "p < 0.05"
-  
-  table$Country[i-1] <- continent_name
-}
-
-Country_B_pvals <- table
-
-######### combine into one table ####
-Country_FCB_pvals <- cbind(Country_F_pvals, Country_C_pvals[, c(2)])
-Country_FCB_pvals <- cbind(Country_FCB_pvals, Country_B_pvals[, (2)])
-names(Country_FCB_pvals)[2] <- "Change in F Index Mean"
-names(Country_FCB_pvals)[3] <- "Change in C Index Mean"
-names(Country_FCB_pvals)[4] <- "Change in B Index Mean"
-
-```
-
-```{r}
-# Check: manually compute t-tests. All are significantly different except Oceania's C score and China's B score:
-
-res <- wilcox.test(Oceania ~ Year, data = now_then_meansC, paired = TRUE)
-res$p.value
-
-res <- wilcox.test(China ~ Year, data = now_then_meansB, paired = TRUE)
-res$p.value #CHINA B
-
-#Sample summary stats
-group_by(now_then_meansB, Year) %>%
+#FOOD ###################################################################################
+Foodsumstats <- group_by(FCB_countries, Country) %>% #for all data (to see interannual variability)
   summarise(
     count = n(),
-    mean = mean(China, na.rm = TRUE),
-    IQR = IQR(China, na.rm = TRUE))
+    mean = mean(Food, na.rm = TRUE),
+    IQR = IQR(Food, na.rm = TRUE),
+    SD = sd(Food, na.rm = TRUE))
 
-ggboxplot(now_then_meansB, x = "Year", y = "China", 
-          color = "Year", palette = c("#00AFBB", "#E7B800"),
-          order = c("1980-1985_mean", "2016-2021_mean"),
-          ylab = "B Index", xlab = "Year",
-          title = "China")
+Foodsumstats2 <- group_by(now_then_meansV2, Region) %>% #for all data (to see interannual variability)
+  summarise(
+    count = n(),
+    mean = mean(Food, na.rm = TRUE),
+    IQR = IQR(Food, na.rm = TRUE),
+    SD = sd(Food, na.rm = TRUE))
 
+  names(Foodsumstats)[1] <- "Region"
 
-#Test if earlier mean is greater than current (if FCB has decreased)
-wilcox.test(Africa ~ Year, data = now_then_meansF, paired = TRUE,
-       alternative = "greater")
+  Foodsumstats <- rbind(Foodsumstats2[c(1:3, 5:6), ], Foodsumstats) #bind
 
-wilcox.test(Oceania ~ Year, data = now_then_meansC, paired = TRUE,
-            alternative = "greater")
+  Foodsumstats <- cbind(Foodsumstats[, c(1, 3:5)], test[, 2])
+  
+png("Foodsummarystats.png", height = 200*nrow(Foodsumstats), width = 600*ncol(Foodsumstats), res = 600)
+grid.table(Foodsumstats)
+dev.off()
 
+###CLIMATE CHANGE ###############################################################
+
+Climsumstats <- group_by(FCB_countries, Country) %>% #for all data (to see interannual variability)
+  summarise(
+    count = n(),
+    mean = mean(Climate, na.rm = TRUE),
+    IQR = IQR(Climate, na.rm = TRUE),
+    SD = sd(Climate, na.rm = TRUE))
+
+Climsumstats2 <- group_by(now_then_meansV2, Region) %>% #for all data (to see interannual variability)
+  summarise(
+    count = n(),
+    mean = mean(Climate, na.rm = TRUE),
+    IQR = IQR(Climate, na.rm = TRUE),
+    SD = sd(Climate, na.rm = TRUE))
+
+  names(Climsumstats)[1] <- "Region"
+
+  Climsumstats <- rbind(Climsumstats2[c(1:3, 5:6), ], Climsumstats) #bind
+
+  Climsumstats <- cbind(Climsumstats[, c(1, 3:5)], test[, 3])
+    
+png("Climsumstats.png", height = 200*nrow(Climsumstats), width = 600*ncol(Climsumstats), res = 600)
+grid.table(Climsumstats)
+dev.off()
+
+########BIODIVERSITY ########################################################################
+Biodivsumstats <- group_by(FCB_countries, Country) %>% #for all data (to see interannual variability)
+  summarise(
+    count = n(),
+    mean = mean(Biodiversity, na.rm = TRUE),
+    IQR = IQR(Biodiversity, na.rm = TRUE),
+    SD = sd(Biodiversity, na.rm = TRUE))
+
+Biodivsumstats2 <- group_by(now_then_meansV2, Region) %>% #for all data (to see interannual variability)
+  summarise(
+    count = n(),
+    mean = mean(Biodiversity, na.rm = TRUE),
+    IQR = IQR(Biodiversity, na.rm = TRUE),
+    SD = sd(Biodiversity, na.rm = TRUE))
+
+  names(Biodivsumstats)[1] <- "Region"
+
+  Biodivsumstats <- rbind(Biodivsumstats2[c(1:3, 5:6), ], Biodivsumstats) #bind
+
+  Biodivsumstats <- cbind(Biodivsumstats[, c(1, 3:5)], test[, 4])
+    
+png("Biodivsumstats.png", height = 200*nrow(Biodivsumstats), width = 600*ncol(Biodivsumstats), res = 600)
+grid.table(Biodivsumstats)
+dev.off()
 ```
 
-######STEP 8: Find what percentage of the region's maximum FCB score in is equal to the difference in means ##############
+###STEP 9: Visualize difference in 5-year means with boxplots ################
 ```{r}
-
-###Countries
-FCB_countries <- cbind(F_weighted_country, C_weighted_country[, c(3)])
-FCB_countries <- cbind(FCB_countries, B_weighted_country[, c(3)])
-names(FCB_countries)[3] <- "Food" #rename columns as F, C and B
-names(FCB_countries)[4] <- "Climate"
-names(FCB_countries)[5] <- "Biodiversity"
-
-country_max <- FCB_countries %>%
-  group_by(Country) %>%
-  summarize(maxF = max(Food), maxC = max(Climate), maxB = max(Biodiversity))
-
-#Continents
-now_then_meansV2 <- cbind(F_weighted_continent, C_weighted_continent[, c(3)])
-now_then_meansV2 <- cbind(now_then_meansV2, B_weighted_continent[, c(3)])
-names(now_then_meansV2)[3] <- "Food"
-names(now_then_meansV2)[4] <- "Climate"
-names(now_then_meansV2)[5] <- "Biodiversity"
-
-continent_max <- now_then_meansV2 %>%
-  group_by(Region) %>%
-  summarize(maxF = max(Food), maxC = max(Climate), maxB = max(Biodiversity))
-
-#put in alphabetical order by region:
-mean_stats_country <- mean_stats_country %>%
-  arrange(mean_stats_country, Country)
-
-country_max <- country_max %>%
-  arrange(country_max, Country)
-
-mean_stats <- mean_stats %>%
-  arrange(mean_stats, Region)
-
-continent_max <- continent_max %>%
-  arrange(continent_max, Region)
-
-#Calculate % by dividing the absolute value of each value in mean_stats by the continent_max
 
 setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
 
-Continent_perc_max <- mapply(`/`,mean_stats[, c(2:4)],continent_max[, c(2:4)])
-Continent_perc_max <- Continent_perc_max*100
-Continent_perc_max <- cbind(mean_stats[, 1], Continent_perc_max)
-names(Continent_perc_max)[2] <- "% of F Max"
-names(Continent_perc_max)[3] <- "% of C Max"
-names(Continent_perc_max)[4] <- "% of B Max"
-write.csv(Continent_perc_max, file = "Continents_FCB_change_perc.csv")
+SD_F_facet <- cbind(now_then_meansF, country_now_then_meansF[, c(3:5)]) %>%
+  pivot_longer(cols = c(!Year), names_to = "Region", values_to = "Mean") %>%
+    ggplot(aes(x= Year, y=Mean, color = Year))+
+    geom_boxplot()+
+    facet_wrap(~Region)+ #scales = "free"
+    theme(axis.text.x = element_blank(),
+          axis.title.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    labs(y = "Food Security Index", color = "")+
+    scale_color_manual(values = c("#E69F00", "#56B4E9"), labels = c('1980 - 1985', '2016 - 2021'))
+  
+ggsave("SD_F_facet.png", SD_F_facet, height = 4, width = 8, dpi = 600)
 
+SD_C_facet <- cbind(now_then_meansC, country_now_then_meansC[, c(3:5)]) %>%
+  pivot_longer(cols = c(!Year), names_to = "Region", values_to = "Mean") %>%
+    ggplot(aes(x= Year, y=Mean, color = Year))+
+    geom_boxplot()+
+    facet_wrap(~Region)+
+    theme(axis.text.x = element_blank(),
+          axis.title.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    labs(y = "Climate Change Index", color = "")+
+    scale_color_manual(values = c("#E69F00", "#56B4E9"), labels = c('1980 - 1985', '2016 - 2021'))
 
-Country_perc_max <- mapply(`/`, mean_stats_country[, c(2:4)],country_max[, c(2:4)])
-Country_perc_max <- Country_perc_max*100
-Country_perc_max <- cbind(mean_stats_country[, 1], Country_perc_max)
-names(Country_perc_max)[2] <- "% of F Max"
-names(Country_perc_max)[3] <- "% of C Max"
-names(Country_perc_max)[4] <- "% of B Max"
-write.csv(Country_perc_max, file = "Countries_FCB_change_perc.csv")
+ggsave("SD_C_facet.png", SD_C_facet, height = 4, width = 8, dpi = 600)
 
+SD_B_facet <- cbind(now_then_meansB, country_now_then_meansB[, c(3:5)]) %>%
+  pivot_longer(cols = c(!Year), names_to = "Region", values_to = "Mean") %>%
+    ggplot(aes(x= Year, y=Mean, color = Year))+
+    geom_boxplot()+
+    facet_wrap(~Region)+
+    theme(axis.text.x = element_blank(),
+          axis.title.x = element_blank(),
+          axis.ticks.x = element_blank())+
+    labs(y = "Biodiversity Index", color = "")+
+    scale_color_manual(values = c("#E69F00", "#56B4E9"), labels = c('1980 - 1985', '2016 - 2021'))
+
+ggsave("SD_B_facet.png", SD_B_facet, height = 4, width = 8, dpi = 600)
 ```
 
-#############################
-OLD
-```{r ANOVA and post-hoc tests}
-#to compare the means from 1980-1985 vs. 2016-2021-- run two-sample Welch t-tests. Welch's test (default) does not assume equal variances
-
-### F ###
-
-#store the continents' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 6, ncol = 2))
-names(table)[1] <- "Continent"
-names(table)[2] <- "p_value"
-
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:7) { #for each continent
-  column <- now_then_meansF[, i]
-  print(column)
-
-  continent_name <- colnames(now_then_meansF[i]) #fix
-  print(continent_name)
-
-  res <- t.test(unlist(column) ~ Year, data = now_then_meansF)
-
-  p <- res$p.value
-
-  #store in table
-  table$p_value[i-1] <- p
-  table$Continent[i-1] <- continent_name
-}
-
-Continent_F_pvals <- table
-
-###### C ##########
-
-#store the continents' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 6, ncol = 2))
-names(table)[1] <- "Continent"
-names(table)[2] <- "p_value"
-
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:7) { #for each continent
-  column <- now_then_meansC[, i]
-  print(column)
-
-  continent_name <- colnames(now_then_meansC[i]) #fix
-  print(continent_name)
-
-  res <- t.test(unlist(column) ~ Year, data = now_then_meansC)
-
-  p <- res$p.value
-
-  #store in table
-  table$p_value[i-1] <- p
-  table$Continent[i-1] <- continent_name
-}
-
-Continent_C_pvals <- table
-
-
-######## B ############
-
-#store the continents' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 6, ncol = 2))
-names(table)[1] <- "Continent"
-names(table)[2] <- "p_value"
-
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:7) { #for each continent
-  column <- now_then_meansB[, i]
-  print(column)
-
-  continent_name <- colnames(now_then_meansB[i]) #fix
-  print(continent_name)
-
-  res <- t.test(unlist(column) ~ Year, data = now_then_meansB)
-
-  p <- res$p.value
-
-  #store in table
-  table$p_value[i-1] <- p
-  table$Continent[i-1] <- continent_name
-}
-
-Continent_B_pvals <- table
-
-######### combine into one table ####
-Continent_FCB_pvals <- cbind(Continent_F_pvals, Continent_C_pvals[, c(2)])
-Continent_FCB_pvals <- cbind(Continent_FCB_pvals, Continent_B_pvals[, (2)])
-names(Continent_FCB_pvals)[2] <- "Change in F Index Mean"
-names(Continent_FCB_pvals)[3] <- "Change in C Index Mean"
-names(Continent_FCB_pvals)[4] <- "Change in B Index Mean"
-```
-
-###post-hoc?
+#### STEP 10: Calculate theoretical max! ##############
 ```{r}
-# now_then_means %>%
-#   group_by(supp) %>%
-#   games_howell_test(len ~ dose)
+speciesdata <- read.csv("/Users/aleahw/Documents/Master's!!/Fuzzy/FCB_scores_2024.csv") #FCB scores for each species
+speciesdata <- speciesdata[, c(2, 6:8)] #remove extra columns
+speciesdata <- speciesdata[order(speciesdata$species), ] #put in alphabetical order
+speciesdata <- speciesdata[!speciesdata$species == "Eucheuma cottonii",] #remove E. Cottonii, as it is a duplicate
 
-# games_howell_test(now_then_means, Africa ~ Year, conf.level = 0.95, detailed = FALSE)
+production_data <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prod_by_cat910.csv") #annual production by species
+production_data <- production_data[, c(2:4)] #remove unnecessary columns
+names(production_data)[1] <- "species"
 
+#bind with species scores?
+allprod <- merge(production_data, speciesdata, by = "species")
 
-games_howell_test(now_then_meansF, Africa ~ Year, conf.level = 0.95, detailed = FALSE)
+#Remove China from datasets so we can calculate Asian total production excluding China:
+all_production_withoutCH <-  subset(allprod, allprod$Country.Name.En != "China")
 
+#Just China
+just_china_prod <- subset(allprod, allprod$Country.Name.En == "China")
 
-#Find the maximum F, C and B scores for each region, then determine what percentage of this maximum score the change is equal to
+#All country case studies: China, Norway, Chile and Nigeria
+
+country_case_study <- allprod[allprod$Country.Name.En %in% c("Norway", "Chile", "Nigeria"), ]
+
+# "/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prod_totals_countries.csv"
+```
+
+```{r Find top-scoring species for each region}
+
+#sort by region and then rank by highest-scoring species: Major continents not including China
+highestF <- all_production_withoutCH %>%
+  group_by(Continent.Name.En) %>%
+  filter(f == max(f))
+
+highestF <- highestF[c(1, 4, 5, 6, 10), c(1, 2, 4)] 
+# highestF <- pivot_wider(highestF, names_from = "Continent.Name.En", values_from = "f")
+
+highestC <- all_production_withoutCH %>%
+  group_by(Continent.Name.En) %>%
+  filter(c == max(c))
+
+highestC <- highestC[c(1, 35, 37, 41, 42), c(1, 2, 5)]
+
+highestB <- all_production_withoutCH %>%
+  group_by(Continent.Name.En) %>%
+  filter(b == max(b))
+
+highestB <- highestB[c(1, 2, 7, 8, 23), c(1, 2, 6)]
+
+#bind: just the highest scores
+highestFCB <- merge(highestF[, c(2, 3)], highestC[, c(2,3)], by = "Continent.Name.En")
+highestFCB <- merge(highestFCB, highestB[, c(2,3)], by = "Continent.Name.En")
+names(highestFCB)[1] <- "Region"
+names(highestFCB)[2] <- "Food"
+names(highestFCB)[3] <- "Climate"
+names(highestFCB)[4] <- "Biodiversity"
+
+#bind: just the species names
+highestFCBsp <- merge(highestF[, c(1, 2)], highestC[, c(1, 2)], by = "Continent.Name.En")
+highestFCBsp <- merge(highestFCBsp, highestB[, c(1, 2)], by = "Continent.Name.En")
+names(highestFCBsp)[1] <- "Region"
+names(highestFCBsp)[2] <- "Food"
+names(highestFCBsp)[3] <- "Climate"
+names(highestFCBsp)[4] <- "Biodiversity"
+
+####separate for China ################################################################################
+CH_F <- just_china_prod %>%
+  filter(f == max(f))
+
+CH_C <- just_china_prod %>%
+  filter(c == max(c))
+
+CH_B <- just_china_prod %>%
+  filter(b == max(b))
+
+#bind: just the highest scores
+CH_highestFCB <- cbind(CH_F[, c(3, 4)], CH_C[, 5])
+CH_highestFCB <- cbind(CH_highestFCB, CH_B[, 6])
+names(CH_highestFCB)[1] <- "Region"
+names(CH_highestFCB)[2] <- "Food"
+names(CH_highestFCB)[3] <- "Climate"
+names(CH_highestFCB)[4] <- "Biodiversity"
+
+#bind: just the species names
+CH_highestFCB_sp <- merge(CH_F[, c(1, 3)], CH_C[, c(1, 3)], by = "Country.Name.En")
+CH_highestFCB_sp <- merge(CH_highestFCB_sp, CH_B[, c(1, 3)], by = "Country.Name.En")
+names(CH_highestFCB_sp)[1] <- "Region"
+names(CH_highestFCB_sp)[2] <- "Food"
+names(CH_highestFCB_sp)[3] <- "Climate"
+names(CH_highestFCB_sp)[4] <- "Biodiversity"
+
+####separate for Norway, Nigeria, Chile  ############################################################
+highestF2 <- country_case_study %>%
+  group_by(Country.Name.En) %>%
+  filter(f == max(f))
+
+highestF2 <- highestF2[, c(1, 3, 4)]
+
+highestC2 <- country_case_study %>%
+  group_by(Country.Name.En) %>%
+  filter(c == max(c))
+
+highestC2 <- highestC2[c(1:3), c(1, 3, 5)] 
+
+highestB2 <- country_case_study %>%
+  group_by(Country.Name.En) %>%
+  filter(b == max(b))
+
+highestB2 <- highestB2[c(1:3), c(1, 3, 6)] 
+
+#bind: just the highest scores
+highestFCB2 <- merge(highestF2[, c(2, 3)], highestC2[, c(2, 3)], by = "Country.Name.En")
+highestFCB2 <- merge(highestFCB2, highestB2[, c(2, 3)], by = "Country.Name.En")
+names(highestFCB2)[1] <- "Region"
+names(highestFCB2)[2] <- "Food"
+names(highestFCB2)[3] <- "Climate"
+names(highestFCB2)[4] <- "Biodiversity"
+
+#bind: just the species names
+highestFCBsp2 <- merge(highestF2[, c(1, 2)], highestC2[, c(1, 2)], by = "Country.Name.En")
+highestFCBsp2 <- merge(highestFCBsp2, highestB2[, c(1, 2)], by = "Country.Name.En")
+names(highestFCBsp2)[1] <- "Region"
+names(highestFCBsp2)[2] <- "Food"
+names(highestFCBsp2)[3] <- "Climate"
+names(highestFCBsp2)[4] <- "Biodiversity"
+
+############### Merge data frames
+
+#Theoretical max FCB scores
+theo_max <- rbind(highestFCB, CH_highestFCB, highestFCB2)
+theo_max <- theo_max[order(theo_max$Region),]
+
+png("theo_max.png", height = 200*nrow(theo_max), width = 600*ncol(theo_max), res = 600)
+grid.table(theo_max)
+dev.off()
+
+#Species
+theo_max_sp <- rbind(highestFCBsp, CH_highestFCB_sp, highestFCBsp2)
+theo_max_sp <- theo_max_sp[order(theo_max_sp$Region),]
+
+png("theo_max_sp.png", height = 200*nrow(theo_max_sp), width = 1100*ncol(theo_max_sp), res = 600)
+grid.table(theo_max_sp)
+dev.off()
 
 ```
 
+```{r Calculate % change}
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
 
-#OLD--welch's...for unpaired?
-```{r ANOVA and post-hoc for countries}
-#to compare the means from 1980-1985 vs. 2016-2021-- run two-sample Welch t-tests. Welch's test (default) does not assume equal variances
+names(mean_stats_country)[1] <- "Region"
 
-#store the countries' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 4, ncol = 2))
-names(table)[1] <- "Country"
-names(table)[2] <- "p_value"
+test <- rbind(mean_stats[c(1:3, 5:6),], mean_stats_country)
 
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:5) { #for each continent
-  column <- now_then_meansF[, i]
-  print(column)
+test <- test[order(test$Region),]
 
-  continent_name <- colnames(now_then_meansF[i]) #fix
-  print(continent_name)
+Perc_max <- mapply(`/`,test[, c(2:4)],theo_max[, c(2:4)])
+Perc_max <- Perc_max*100
+names(Perc_max)[2] <- "% of F Max"
+names(Perc_max)[3] <- "% of C Max"
+names(Perc_max)[4] <- "% of B Max"
 
-  res <- t.test(unlist(column) ~ Year, data = now_then_meansF)
+Perc_max <-cbind(test[, c(1)], Perc_max)
 
-  p <- res$p.value
-
-  #store in table
-  table$p_value[i-1] <- p
-  table$Country[i-1] <- continent_name
-}
-
-Country_F_pvals <- table
-
-###### C ##########
-
-#store the continents' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 4, ncol = 2))
-names(table)[1] <- "Country"
-names(table)[2] <- "p_value"
-
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:5) { #for each continent
-  column <- now_then_meansC[, i]
-  print(column)
-
-  continent_name <- colnames(now_then_meansC[i]) #fix
-  print(continent_name)
-
-  res <- t.test(unlist(column) ~ Year, data = now_then_meansC)
-
-  p <- res$p.value
-
-  #store in table
-  table$p_value[i-1] <- p
-  table$Country[i-1] <- continent_name
-}
-
-Country_C_pvals <- table
-
-
-######## B ############
-#store the continents' p values in a dataframe
-#blank dataframe, rename columns, 5 rows
-table = data.frame(matrix(nrow = 4, ncol = 2))
-names(table)[1] <- "Country"
-names(table)[2] <- "p_value"
-
-#t-tests comparing the 1980-1985 mean with the 2016-2021 mean
-for (i in 2:5) { #for each continent
-  column <- now_then_meansB[, i]
-  print(column)
-
-  continent_name <- colnames(now_then_meansB[i]) #fix
-  print(continent_name)
-
-  res <- t.test(unlist(column) ~ Year, data = now_then_meansB)
-
-  p <- res$p.value
-
-  #store in table
-  table$p_value[i-1] <- p
-  table$Country[i-1] <- continent_name
-}
-
-Country_B_pvals <- table
-
-######### combine into one table ####
-Country_FCB_pvals <- cbind(Country_F_pvals, Country_C_pvals[, c(2)])
-Country_FCB_pvals <- cbind(Country_FCB_pvals, Continent_B_pvals[, (2)])
-names(Country_FCB_pvals)[2] <- "Change in F Index Mean"
-names(Country_FCB_pvals)[3] <- "Change in C Index Mean"
-names(Country_FCB_pvals)[4] <- "Change in B Index Mean"
+write.csv(Perc_max, file = "FCB_change_perc.csv")
 ```
 
+```{r Plot as heatmap}
 
-#REMEMBER: only weight by one species of Porphyra (out of three species of Porphyra included in the FCB scores data), since the production data clumps them all together
+Perc_max$changeinF <- as.numeric(Perc_max$changeinF)
+Perc_max$changeinC <- as.numeric(Perc_max$changeinC)
+Perc_max$changeinB <- as.numeric(Perc_max$changeinB)
 
-Paired t-tests: d must be normally distributed
-1. Calculate the difference (d) between each pair of value
-2. Compute the mean (m) and the standard deviation (s) of d
-3. Compare the average difference to 0. If there is any significant difference between the two pairs of samples, then the mean of d (m) is expected to be far from 0
+heatmapdata <- Perc_max
+heatmapdata <- pivot_longer(heatmapdata, cols = -c("Region"), 
+                                names_to = "index", values_to = "perc_change")
+
+###
+plot <- ggplot(heatmapdata, aes(y= index, x = Region, fill= perc_change)) + 
+  geom_raster()+
+  scale_fill_viridis_c(option = "viridis")+ #viridis is colorblind friendly
+  labs(fill = "perc_change")+
+  theme(axis.title.x = element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y = element_text(size = 15),
+        axis.text.x = element_text(size = 10, angle = 15))+
+  scale_y_discrete(limits = c('changeinB', 'changeinC', 'changeinF'), labels = c("B", "C", "F"))+
+   scale_x_discrete(limits = c('Chile', 'China','Nigeria','Norway', 'Africa', 'Americas', 'Asia','Europe','Oceania'), labels = c('Chile', 'China','Nigeria','Norway', 'Africa', 'Americas', 'Asia','Europe','Oceania'))
 
 
-#################################################################################
-
-Justify the use of Welch's vs. Kruskal-Wallis
-
-Basic assumptions of ANOVA tests:
-
-1. Independence of random variables in the populations (groups) under consideration.
-2. Measurability of the analysed variables.
-3. Normality of the distribution of the variables in each population (group).
-4. Homogeneity of the variance in all populations (groups).
-
-If one of the first three assumptions is not met in the analysis of variance, the non-parametric Kruskal-Wallis test should be used. If the assumption of homogeneity of variances is not met, the Welch test should be used to assess the means."
+ggsave("mean_percchange_heatmap.png", plot, height = 4, width = 8, dpi = 600)
+```
