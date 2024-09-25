@@ -17,6 +17,22 @@ library(tidyr)
 library(ggplot2)
 ```
 
+```{r}
+#Color palette with colorblind friendly colors
+
+cbPalette1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+#use orange, yellow, dark blue, red and pink
+cbPalette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#D55E00", "#CC79A7")
+
+
+# # To use for fills, add
+#   scale_fill_manual(values=cbPalette)
+# 
+# # To use for line and point colors, add
+#   scale_colour_manual(values=cbPalette)
+```
+
 ############################################################
 Steps 1-4 are stored in the dataprep file
 1. Calculate annual production totals for each species (data saved/provided)
@@ -24,18 +40,13 @@ Steps 1-4 are stored in the dataprep file
 3. Graphing production (don't need to run steps 1-2)
 4. Calculating production by taxa--use production values to weight FCB scores by taxonomic category
 -----------------------------------------------
-5. Weight F scores by production (Line 41)
-6. Weight C scores by production (Line 434)
-7. Weight B scores by production (Line 790)
-8. Graphing weighted FCB scores together (Line 1157)
-9. FCB Correlations over time (Line 1192)
-10. Graphing weighted FCB scores for each taxa (Line 1282)
-11. Correlations of FCB in species (Line 1387)
-12. Percent contribution to indices (Line 1423)
-13. 
-
-Divergence and convergence
-Stats tests?
+5. Weight F scores by production
+6. Weight C scores by production
+7. Weight B scores by production
+8. Graphing weighted FCB scores together
+9. FCB Correlations over time
+10. Graphing weighted FCB scores for each taxa
+11. Correlations of FCB in species
 ############################################################
 
 ###STEP 5: Weight food security scores by production ###
@@ -387,10 +398,10 @@ NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/weighted_Fscor
 write.csv(merge,file=NAME)
 
 #graph
-plot <- ggplot(merge, aes(x=Year, y=Score, color = weighted_by)) +geom_line(size =1)+
+ggplot(merge, aes(x=Year, y=Score, color = weighted_by)) +geom_line(size =1)+
   labs(y = "Mean Food Security Index", title = "Food Security Potential of Aquaculture")+
     theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(name = "Weighted By", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))+
+      scale_color_manual(name = "Weighted By", values=c(cbPalette))+
     ylim(30,65)
 
 #SAVE
@@ -426,10 +437,9 @@ plot <- ggplot(scores_3_periods, aes(x = Year, y=Score, color = weighted_by))+ g
   scale_y_continuous(limits = c(30, 67))+
   labs(y = "Mean Food Security Index")+
     theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(name = "Weighted By", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))
+      scale_color_manual(name = "Weighted By", values= cbPalette)
 
-
-# ggsave("mean_F_boxplots830.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+# ggsave("mean_F_boxplots.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 ```
 
 ###STEP 6: Weight climate scores by production ###
@@ -781,10 +791,10 @@ plot <- ggplot(scores_3_periods, aes(x = Year, y=Score, color = weighted_by))+ g
   scale_y_continuous(limits = c(30, 67))+
   labs(y = "Mean Climate Index")+
     theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(name = "Weighted By", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))
+      scale_color_manual(name = "Weighted By", values=cbPalette)
 
 setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
-# ggsave("mean_C_boxplots830.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+# ggsave("mean_C_boxplots.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 ```
 
 ####STEP 7: Weight biodiversity  scores by production ################
@@ -1149,10 +1159,10 @@ plot <- ggplot(scores_3_periods, aes(x = Year, y=Score, color = weighted_by))+ g
   scale_y_continuous(limits = c(30, 67))+
   labs(y = "Mean Biodiversity Index")+
     theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(name = "Weighted By", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))
+      scale_color_manual(name = "Weighted By", values=cbPalette)
 
 # setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
-# ggsave("mean_B_boxplots830.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+# ggsave("mean_B_boxplots.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 ```
 
 #STEP 8:Combining weighted F, C, B into one graph ########
@@ -1181,13 +1191,13 @@ merge <- rbind(merge, B_weighted_all)
 plot <- ggplot(merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
   labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by 54 Major Species")+
     theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))+
+      scale_color_manual(name = "Index", values=cbPalette)+
   ylim(48, 60)
 
 
 #SAVE
 # setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
-# ggsave("FCB_weightedby_all830.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+# ggsave("FCB_weightedby_all.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 ```
 
 ###STEP 9: Correlations over time, run after Step 8 as F_weighted_all etc. rely on Step 8 code ###
@@ -1348,36 +1358,36 @@ crust_merge <- rbind(crust_merge, Bbycrust)
 setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
 
 #FINFISH
-ggplot(finfish_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+plot <- ggplot(finfish_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
   labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Finfish")+
     theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))+
+      scale_color_manual(name = "Index", values=cbPalette)+
         ylim(45, 54)
 # ggsave("FCB_weightedby_finfish.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 
 #ALGAE
-ggplot(algae_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+plot <- ggplot(algae_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
   labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Algae")+
     theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))+
+      scale_color_manual(name = "Index", values=cbPalette)+
         ylim(53, 67)
 
 # ggsave("FCB_weightedby_algae.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 
 #MOLLUSCS
-ggplot(mollusc_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+plot <- ggplot(mollusc_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
   labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Molluscs")+
     theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))+
+      scale_color_manual(name = "Index", values=cbPalette)+
   ylim(44, 66)
 
 # ggsave("FCB_weightedby_molluscs.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 
 #CRUSTACEANS
-ggplot(crust_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+plot <- ggplot(crust_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
   labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Crustaceans")+
     theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
-      scale_color_manual(name = "Index", values=c('#7D627F', '#7DBBC3', "pink", "orange"))+
+      scale_color_manual(name = "Index", values=cbPalette)+
   ylim(30, 55)
 
 # ggsave("FCB_weightedby_crustaceans.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
@@ -1418,312 +1428,4 @@ cor.test(speciesdata$f, speciesdata$c,  method="kendall") #SIG; tau = 0.4148244,
 cor.test(speciesdata$f, speciesdata$b,  method="kendall") #SIG; tau = 0.3690207; p-value = 6.122e-05
 
 cor.test(speciesdata$c, speciesdata$b,  method="kendall") #SIG; tau = 0.3169543; p-value = 0.0005763
-```
-
-###STEP 12: Percent contribution to index: % contribution of taxonomic groups relative to F, C, B relative to the proportion of total production ###
-```{r}
-#First, calculate the % contribution of each taxa to annual production. We will eventually divide FCB indices by this proportion to find a ratio.
-
-weighting_totals <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prodbytaxa_forweighting.csv") #annual production by taxonomic group
-weighting_totals <- weighting_totals[, c(2:74)] #remove extra first column
-weighting_totals <- weighting_totals[-c(3), ] #remove "inverts" category
-
-new_frame <- weighting_totals #create new frame
-new_frame <- new_frame[FALSE, ]
-
-#divide taxa production in each year by the total prod in that year
-
-for (i in 2:nrow(weighting_totals)){ #for each taxonomic group
-    for (b in 2:73){ #for each year
-      total_prod <- weighting_totals[1, b] #get the total prod in that year
-      index <- weighting_totals[i, b]/total_prod*100 #divide score by that species' total prod
-      new_frame[i-1, b] <- index   #add these numbers to the frame
-  } 
-}
-
-#rename
-new_frame[1, 1] <-"Finfish"
-new_frame[2, 1] <-"Algae"
-new_frame[3, 1] <-"Crustacean"
-new_frame[4, 1] <-"Mollusc"
-
-#make long
-new_frame <- pivot_longer(new_frame, cols = -c("category"),
-                                names_to = "Year", values_to = "Perc_prod") #double check this
-#fix years
-year_labs <- rep(2021:1950, times=6) 
-
-#rename year column in weighted_indexes
-for (i in 1:nrow(new_frame)) {
-  print(new_frame$Year[i])
-  #replace each year with the actual year number from year_labs
-  
-  new_frame$Year[i] <- year_labs[i]
-}
-
-#save this
-totalproduction <- new_frame
-#goes one taxa at a time, from 2021 to 1950
-
-#PUT IN year order
-totalproduction <- totalproduction %>% arrange(Year)
-
-#Save as a file just in case:
-NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/yearly_production_percentage_bytaxa.csv")
-write.csv(totalproduction ,file=NAME)
-```
-
-```{r Load in data}
-#Run code chunk 1 ("Loading in data") from Step 1, line ~1282 and these lines
-
-F_weighted_all <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Fweightedby_all.csv")
-F_weighted_all <- F_weighted_all[, c(2:3)]
-C_weighted_all <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Cweightedby_all.csv")
-C_weighted_all <- C_weighted_all[, c(2:3)]
-B_weighted_all <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Bweightedby_all.csv")
-B_weighted_all <- B_weighted_all[, c(2:3)]
-
-#put Weighting_totals in reverse order
-weighting_totals_rev <- rev(weighting_totals)
-weighting_totals_rev <- weighting_totals_rev[-c(3),] #remove inverts category!!!
-
-setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
-```
-
-```{r Percent contribution of each taxa to F}
-
-#merge
-all_taxa <- merge(Fbyfinfish, Fbyalgae, by="Year")
-all_taxa <- merge(all_taxa, Fbycrust, by="Year")
-all_taxa <- merge(all_taxa, Fbymolluscs, by="Year")
-all_taxa <- merge(all_taxa, F_weighted_all, by="Year")
-
-#rename
-colnames(all_taxa)[2] <- "Finfish"
-colnames(all_taxa)[3] <- "Algae"
-colnames(all_taxa)[4] <- "Crustaceans"
-colnames(all_taxa)[5] <- "Molluscs"
-colnames(all_taxa)[6] <- "All"
-
-new_frame <- all_taxa[, -c(6)] #create new frame
-
-for (i in 2:5) { #for each taxa
-  # print(weighting_totals_rev$category[i])
- for (y in 1:72){ #for each year
-   taxa_perc <- weighting_totals_rev[i, y]/weighting_totals_rev[1,y] #divide the taxa's production volume by the total volume of production in that year 
-   # print(weighting_totals_rev[i, y])
-   # print(taxa_perc)
-   product <- taxa_perc*all_taxa[y, i] #multiply taxa_perc by the index score of the taxa
-   # print(all_taxa[y, i])
-   # print(product)
-   product <- product/all_taxa[y, 6] #divide the product by the FCB score that year when weighted by all taxa
-   # print(product)
-
-   new_frame[y, i] <- product*100 #put this number in a dataframe, convert from decimal to the numerical value of the percentage
-   
- }
-}
-
-#make long
-new_frame <- pivot_longer(new_frame, cols = -c("Year"),
-                                names_to = "species", values_to = "index_perc") #check calculation
-
-#save this
-totalindex <- new_frame
-
-#combine totalindex and totalprod
-prod_index <- cbind(totalindex, totalproduction) #totalproduction created in chunk one of Step 12
-prod_index <- prod_index[, -c(4, 5)]
-
-#new column divides perc contribution to index, by perc contribution to production
-prod_index[, 5] <- "new"
-colnames(prod_index)[5] <- "ratio"
-
-#calculate ratio for every row
-for (i in 1:nrow(prod_index)) {
-  ratio <- prod_index$index_perc[i]/prod_index$Perc_prod[i]
-  prod_index$ratio[i] <- ratio
-}
-
-#graph this:
-plot <- ggplot(prod_index, aes(x=Year, y=as.numeric(ratio) , color=species)) + geom_point()+
-      geom_hline(yintercept = 1)+
-      labs(y = "Contribution to F index:contribution to production")
-      # ylim(0, 1.5)
-
-#SAVE
-# setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
-# ggsave("Ratio_F_prod9-6.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
-```
-
-```{r Percent contribution of each taxa to C}
-#merge
-all_taxa <- merge(Cbyfinfish, Cbyalgae, by="Year")
-all_taxa <- merge(all_taxa, Cbycrust, by="Year")
-all_taxa <- merge(all_taxa, Cbymolluscs, by="Year")
-all_taxa <- merge(all_taxa, C_weighted_all, by="Year")
-
-#rename
-colnames(all_taxa)[2] <- "Finfish"
-colnames(all_taxa)[3] <- "Algae"
-colnames(all_taxa)[4] <- "Crustaceans"
-colnames(all_taxa)[5] <- "Molluscs"
-colnames(all_taxa)[6] <- "All"
-
-new_frame <- all_taxa[, -c(6)] #create new frame
-
-for (i in 2:5) { #for each taxa
-  # print(weighting_totals_rev$category[i])
- for (y in 1:72){ #for each year
-   taxa_perc <- weighting_totals_rev[i, y]/weighting_totals_rev[1,y] #divide the taxa's production volume by the total volume of production in that year 
-   # print(weighting_totals_rev[i, y])
-   # print(taxa_perc)
-   product <- taxa_perc*all_taxa[y, i] #multiply taxa_perc by the index score of the taxa
-   # print(all_taxa[y, i])
-   # print(product)
-   product <- product/all_taxa[y, 6] #divide the product by the FCB score that year when weighted by all taxa
-   # print(product)
-
-   new_frame[y, i] <- product*100 #put this number in a dataframe, convert from decimal to the numerical value of the percentage
-   
- }
-}
-
-#make long
-new_frame <- pivot_longer(new_frame, cols = -c("Year"),
-                                names_to = "species", values_to = "index_perc") #check calculation
-
-#save this
-totalindex <- new_frame
-
-#combine totalindex and totalprod
-prod_index <- cbind(totalindex, totalproduction) #totalproduction created in chunk one of Step 12
-prod_index <- prod_index[, -c(4, 5)]
-
-#new column divides perc contribution to index, by perc contribution to production
-prod_index[, 5] <- "new"
-colnames(prod_index)[5] <- "ratio"
-
-#calculate ratio for every row
-for (i in 1:nrow(prod_index)) {
-  ratio <- prod_index$index_perc[i]/prod_index$Perc_prod[i]
-  prod_index$ratio[i] <- ratio
-}
-
-#graph this:
-plot <- ggplot(prod_index, aes(x=Year, y=as.numeric(ratio) , color=species)) + geom_point()+
-      geom_hline(yintercept = 1)+
-      labs(y = "Contribution to C index:contribution to production")
-      # ylim(0, 1.5)
-
-#SAVE
-# ggsave("Ratio_C_prod9-6.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
-```
-
-```{r Percent contribution of each taxa to B}
-#merge
-all_taxa <- merge(Bbyfinfish, Bbyalgae, by="Year")
-all_taxa <- merge(all_taxa, Bbycrust, by="Year")
-all_taxa <- merge(all_taxa, Bbymolluscs, by="Year")
-all_taxa <- merge(all_taxa, B_weighted_all, by="Year")
-
-#rename
-colnames(all_taxa)[2] <- "Finfish"
-colnames(all_taxa)[3] <- "Algae"
-colnames(all_taxa)[4] <- "Crustaceans"
-colnames(all_taxa)[5] <- "Molluscs"
-colnames(all_taxa)[6] <- "All"
-
-new_frame <- all_taxa[, -c(6)] #create new frame
-
-for (i in 2:5) { #for each taxa
-  # print(weighting_totals_rev$category[i])
- for (y in 1:72){ #for each year
-   taxa_perc <- weighting_totals_rev[i, y]/weighting_totals_rev[1,y] #divide the taxa's production volume by the total volume of production in that year 
-   # print(weighting_totals_rev[i, y])
-   # print(taxa_perc)
-   product <- taxa_perc*all_taxa[y, i] #multiply taxa_perc by the index score of the taxa
-   # print(all_taxa[y, i])
-   # print(product)
-   product <- product/all_taxa[y, 6] #divide the product by the FCB score that year when weighted by all taxa
-   # print(product)
-
-   new_frame[y, i] <- product*100 #put this number in a dataframe, convert from decimal to the numerical value of the percentage
-   
- }
-}
-
-#make long
-new_frame <- pivot_longer(new_frame, cols = -c("Year"),
-                                names_to = "species", values_to = "index_perc") #check calculation
-
-#save this
-totalindex <- new_frame
-
-#combine totalindex and totalprod
-prod_index <- cbind(totalindex, totalproduction) #totalproduction created in chunk one of Step 12
-prod_index <- prod_index[, -c(4, 5)]
-
-#new column divides perc contribution to index, by perc contribution to production
-prod_index[, 5] <- "new"
-colnames(prod_index)[5] <- "ratio"
-
-#calculate ratio for every row
-for (i in 1:nrow(prod_index)) {
-  ratio <- prod_index$index_perc[i]/prod_index$Perc_prod[i]
-  prod_index$ratio[i] <- ratio
-}
-
-#graph this:
-plot <- ggplot(prod_index, aes(x=Year, y=as.numeric(ratio) , color=species)) + geom_point()+
-      geom_hline(yintercept = 1)+
-      labs(y = "Contribution to B index:contribution to production")
-      # ylim(0, 1.5)
-
-#SAVE
-# ggsave("Ratio_B_prod9-6.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
-```
-
-#Percentage of total production
-```{r}
-#compared to a stacked % barchart of just production
-
-weighting_totals <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prodbytaxa_forweighting.csv")
-
-#remove extra columns
-weighting_totals <- weighting_totals[, c(2:74)]
-
-library(tidyr)
-#make long
-weighting_totals2 <- pivot_longer(weighting_totals, cols = -c(category),
-                                names_to = "Year", values_to = "Score")
-
-year_labs <- rep(2021:1950, times=6)
-
-#rename year column in weighted_indexes
-for (i in 1:nrow(weighting_totals2)) {
-  print(weighting_totals2$Year[i])
-  #replace each year with the actual year number from year_labs
-
-  weighting_totals2$Year[i] <- year_labs[i]
-}
-
-weighting_totals2$Year <- as.numeric(weighting_totals2$Year) #make years numeric
-weighting_totals2 <- weighting_totals2[order(weighting_totals2$Year),] #put earlier years first
-
-#remove inverts
-weighting_totals2 <- weighting_totals2[!(weighting_totals2$category == "inverts" | weighting_totals2$category ==  "all species"),]
-
-# #delete "all" from weighting totals 2
-# weighting_totals2  <- weighting_totals %>%
-#   filter(species != "all species")
-
-# #specify order of bars (from top to bottom)
-weighting_totals2$species <- factor(weighting_totals2$category, levels=c('algae','crustacean', 'mollusc','finfish'))
-
-ggplot(weighting_totals2, aes(fill=category, y=Score, x=Year)) + 
-    geom_bar(position="fill", stat="identity")+
-    labs(y = "Percent contribution to total production")
-
-# ggsave("percent_contribution_prod2.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 ```
