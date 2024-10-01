@@ -1,0 +1,928 @@
+---
+title: "Spatialprep2"
+author: "Aleah Wong"
+date: '2024-09-26'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls())
+.rs.restartR()
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+```
+
+############################################################################################
+##TABLE OF CONTENTS
+STEP 1: Rename species in the production dataset to match latin names in the FCB scores dataset (Line 35)
+
+STEP 2: Calculate annual production totals by species and by continent (Line 141)
+
+STEP 3: Weight FCB scores by production data of continents (Line 337)
+
+STEP 4: Weight FCB scores by production data of case study countries (Line 627)
+
+STEP 5: Visualization and analysis: See "Spatial_analysis_clean.Rmd"
+############################################################################################
+
+###STEP 1: Rename species ####
+```{r Load in FAO data}
+
+inland <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/inland_finfish_prod.csv")
+marine <-read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/marine_finfish_prod.csv")
+nonfish <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/nonfish_prod.csv")
+nigeria <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Nigeria_prod.csv") #production specific to Nigeria, not already included
+
+#delete 2022 from Nigeria, since the other datasets are missing this year
+nigeria <- nigeria[, c(-6)]
+
+####Rowbind
+all_production <- bind_rows(inland, marine, nonfish, nigeria)
+
+#Remove nori nei, scallops nei and sea mussels nei
+all_production <- all_production[!all_production$ASFIS.species.Name.En == "Nori nei",]
+all_production <- all_production[!all_production$ASFIS.species.Name.En == "Scallops nei",]
+all_production <- all_production[!all_production$ASFIS.species.Name.En == "Sea mussels nei",]
+all_production <- all_production[!all_production$ASFIS.species.Name.En == "Eucheuma seaweeds nei", ]
+
+###Rename species names as latin names so they match data file containing FCB scores data
+unique(all_production$ASFIS.species.Name.En) #get a list of unique species in all_production
+
+#Specific to Nigeria:
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Cyprinids nei"] <- "Cyprinus carpio" 
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Penaeus shrimps nei"] <- "Penaeus vannamei"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Tilapias nei"] <- "Oreochromis niloticus"
+
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Bighead carp"] <- "Hypophthalmichthys nobilis"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Black carp"] <- "Mylopharyngodon piceus"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En =="Catla"] <- "Catla catla"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En =="Common carp"] <- "Cyprinus carpio"                  
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En =="Crucian carp"] <- "Carassius carassius"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En =="Grass carp(=White amur)"] <- "Ctenopharyngodon idellus" #FIX ??
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Largemouth black bass"] <- "Micropterus salmoides"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En =="Nile tilapia"] <- "Oreochromis niloticus"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Rainbow trout"] <- "Oncorhynchus mykiss"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Roho labeo"] <- "Labeo rohita"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Silver carp"] <- "Hypophthalmichthys molitrix"                
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Striped catfish"] <- "Pangasianodon hypophthalmus"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Wuchang bream"] <- "Megalobrama amblycephala"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "North African catfish"] <- "Clarias gariepinus"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Atlantic salmon"] <- "Salmo salar"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Barramundi(=Giant seaperch)"] <- "Lates calcarifer"                                      
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Coho(=Silver) salmon"] <- "Oncorhynchus kisutch"                                
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "European seabass"] <- "Dicentrarchus labrax"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Flathead grey mullet"] <- "Mugil cephalus"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Gilthead seabream"] <- "Sparus aurata"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Japanese amberjack"] <- "Seriola quinqueradiata"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Japanese seabass"] <-  "Lateolabrax japonicus"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Large yellow croaker"] <- "Larimichthys croceus"                                       
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Milkfish"] <- "Chanos chanos"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Orange-spotted grouper"] <- "Epinephelus coioides"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Pompano"] <- "Trachinotus ovatus"                                       
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Red drum"] <- "Sciaenops ocellatus"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Blood cockle"] <- "Tegillarca granosa"                                       
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Blue mussel" ] <- "Mytilus edulis"                                       
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Chilean mussel"] <- "Mytilus chilensis"                                      
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Chinese mitten crab" ] <- "Eriocheir sinensis"                                      
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Constricted tagelus"] <- "Sinonovacula constricta"                                       
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Elkhorn sea moss"] <- "Kappaphycus alvarezii"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Fusiform sargassum"] <- "Sargassum fusiforme"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Giant river prawn"] <- "Macrobrachium rosenbergii"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Giant tiger prawn"] <- "Penaeus monodon"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Gracilaria seaweeds"] <- "Gracilaria gracilis"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Green mud crab"] <- "Scylla paramamosain"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Indo-Pacific swamp crab"] <- "Scylla serrata"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Japanese carpet shell"] <- "Ruditapes philippinarum"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Japanese kelp"] <- "Laminaria japonica"                                       
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Laver (Nori)"] <- "Porphyra yezoensis" #We will use yezoensis as a proxy for the other three species of poryphyra                                       
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Mediterranean mussel"] <- "Mytilus galloprovincialis"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "New Zealand mussel"] <- "Perna canaliculus"                                       
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Oriental river prawn" ] <- "Macrobrachium nipponense"                                        
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Pacific cupped oyster"] <- "Magallana gigas" 
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Red swamp crawfish"] <- "Procambarus clarkii"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Spiny eucheuma"] <- "Eucheuma denticulatum"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Wakame"] <- "Undaria pinnatifida"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Whiteleg shrimp"] <- "Penaeus vannamei"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "Yesso scallop" ] <- "Mizuhopecten yessoensis"
+all_production$ASFIS.species.Name.En[all_production$ASFIS.species.Name.En == "American cupped oyster"] <- "Crassostrea virginica"
+
+#REMEMBER: only weight Porphyra yezoensis (out of three species of Porphyra included in the FCB scores data), since the production data clumps them all together
+
+#Put rows in alphabetical order
+all_production <- all_production[order(all_production$ASFIS.species.Name.En), ]
+
+#save
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prod_by_cat926.csv")
+write.csv(all_production,file=NAME)
+```
+
+```{r Create data subsets: continent data without China; just China data; datasets with select country data}
+
+all_production2 <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prod_by_cat926.csv") #can load in the new data if you don't run chunk above
+all_production2 <- all_production2[, c(-1)] #remove extra row
+
+#Remove China from datasets so we can calculate Asian total production excluding China:
+all_production_withoutCH <-  subset(all_production2, all_production2$Country.Name.En != "China")
+
+#Just China
+just_china_prod <- subset(all_production2, all_production2$Country.Name.En == "China")
+
+#All country case studies: China, Norway, Chile, Egypt and Nigeria #could probably just filter these from all_production during calculations 
+country_case_study_prod <- all_production2[all_production2$Country.Name.En %in% c("China", "Norway", "Chile", "Egypt", "Nigeria"), ]
+```
+
+###STEP 2: Calculate annual production totals: just China, all continents excluding China, country-specific####
+```{r Sum species production in case study countries}
+
+country_case_study_prod <- country_case_study_prod %>%mutate_at(c(6:77), as.numeric) #change yearly data to numeric
+
+#create list of each continent to loop through
+uniquecountry <- c("China", "Norway", "Chile", "Egypt", "Nigeria")
+
+country_case_study_totals <- filter(country_case_study_prod) #create new frame
+country_case_study_totals <- country_case_study_totals[FALSE, ]
+
+# Sum the annual production of each species for each continent
+for (i in 1:5){ #for each of the 5 countries
+  u_continent <- filter(country_case_study_prod, Country.Name.En == uniquecountry[i], ) #subset one country
+  # print(u_continent$Continent.Name.En[i])
+  y <- nrow(country_case_study_totals)
+
+  #find sum for each species, each year
+  u_species <- unique(u_continent$ASFIS.species.Name.En)
+
+  for (z in 1:length(u_species)) {
+    # print(u_species[z])
+    uu <- filter(u_continent, ASFIS.species.Name.En == u_species[z], )
+
+      for (b in 6:77){ #for each year; calculate the annual mean each year
+        a <- sum(uu[, b], na.rm = TRUE)
+
+        country_case_study_totals[y+z, b] <-a
+
+        country_case_study_totals[y+z, 1] <- u_species[z] #species name
+        country_case_study_totals[y+z, 2] <- uniquecountry[i] #continent
+
+    }
+  }
+}
+
+country_case_study_totals <- country_case_study_totals[, c(1, 2, 6:77)] #cut out unnecessary columns
+names(country_case_study_totals)[1] <- "Species" #rename first column
+
+# #save this data
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prod_totals_countries926.csv")
+write.csv(country_case_study_totals,file=NAME)
+
+###SUM production totals by country for future weighting...?
+country_case_study_totals <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prod_totals_countries926.csv")
+country_case_study_totals <- country_case_study_totals[, -c(1)]
+str(country_case_study_totals)
+
+country_case_study_totals <- country_case_study_totals %>%mutate_at(c(3:74), as.numeric) #change yearly data to numeric
+names(country_case_study_totals)[2] <- "Country" #rename continent column
+
+new_frame <- country_case_study_totals #create new frame
+new_frame <- new_frame[FALSE, ]
+
+#now add the totals for other categories
+#We already have a list of each country to loop through: uniquecountry <- c("China", "Norway", "Chile", "Egypt", "Nigeria")
+
+for (i in 1:length(uniquecountry)){ #for each of the countries
+  u_cont <- filter(country_case_study_totals, Country == uniquecountry[i])
+  
+#calculate the annual mean each year
+
+  for (b in 3:74){
+    a <- sum(u_cont[, b], na.rm = TRUE)
+    print(a)
+    new_frame[i, 2] <- uniquecountry[i]
+    new_frame[i, b] <-a #change row number 
+  }
+}
+
+new_frame <- new_frame[, c(2:74)] #cut out unnecessary columns
+
+#save this data
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/cat_totals_countries926.csv")
+write.csv(new_frame,file=NAME)
+```
+
+```{r Sum species production in China }
+
+just_china_prod <- just_china_prod %>%mutate_at(c(6:77), as.numeric) #change yearly data to numeric
+
+just_china_totals <- filter(just_china_prod) #create new frame
+just_china_totals <- just_china_totals[FALSE, ]
+
+  #find sum for each species, each year
+  u_species <- unique(just_china_prod$ASFIS.species.Name.En)
+
+  for (z in 1:length(u_species)) {
+    # print(u_species[z])
+    uu <- filter(just_china_prod, ASFIS.species.Name.En == u_species[z], )
+
+      for (b in 6:77){ #for each year; calculate the annual mean each year
+        a <- sum(uu[, b], na.rm = TRUE)
+
+        just_china_totals[z, b] <-a
+
+        just_china_totals[z, 1] <- u_species[z] #species name
+        just_china_totals[z, 2] <- "China" #continent
+
+    }
+  }
+
+just_china_totals <- just_china_totals[, c(1, 2, 6:77)] #cut out unnecessary columns
+names(just_china_totals)[1] <- "Species" #rename first column
+
+# #save this data
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/CH_prod_totals.csv")
+# write.csv(just_china_totals,file=NAME)
+```
+
+```{r Sum species annual totals in continents, excluding China}
+
+all_production_withoutCH <- all_production_withoutCH %>%mutate_at(c(6:77), as.numeric) #change yearly data to numeric
+
+#create list of each continent to loop through
+uniquecontinent <- c("Africa", "Americas", "Asia", "Europe", "Oceania")
+
+prod_without_CH_totals <- filter(all_production_withoutCH) #create new frame
+prod_without_CH_totals <- prod_without_CH_totals[FALSE, ]
+
+# Sum the annual production of each species for each continent
+for (i in 1:5){ #for each of the 5 continents
+  u_continent <- filter(all_production_withoutCH, Continent.Name.En == uniquecontinent[i], ) #subset one continent
+  # print(u_continent$Continent.Name.En[i])
+  y <- nrow(prod_without_CH_totals)
+
+  #find sum for each species, each year
+  u_species <- unique(u_continent$ASFIS.species.Name.En)
+
+  for (z in 1:length(u_species)) {
+    # print(u_species[z])
+    uu <- filter(u_continent, ASFIS.species.Name.En == u_species[z], )
+
+      for (b in 6:77){ #for each year; calculate the annual mean each year
+        a <- sum(uu[, b], na.rm = TRUE)
+
+        prod_without_CH_totals[y+z, b] <-a
+
+        prod_without_CH_totals[y+z, 1] <- u_species[z] #species name
+        prod_without_CH_totals[y+z, 2] <- uniquecontinent[i] #continent
+
+    }
+  }
+}
+
+prod_without_CH_totals <- prod_without_CH_totals[, c(1, 2, 6:77)] #cut out unnecessary columns
+names(prod_without_CH_totals)[1] <- "Species" #rename first column
+
+# #save this data
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prod_totals_without_CH.csv")
+# write.csv(prod_without_CH_totals,file=NAME)
+
+cat_totals <- rbind(prod_without_CH_totals, just_china_totals) #combine China data with the rest (China as own "continent" category)
+
+#save cat_totals
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prod_by_cat.csv")
+# write.csv(cat_totals,file=NAME)
+```
+ 
+```{r Sum production totals by continent for future weighting}
+# 
+cat_totals <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prod_by_cat.csv")
+cat_totals <- cat_totals[, c(-1)]
+
+str(cat_totals)
+cat_totals <- cat_totals %>%mutate_at(c(3:74), as.numeric) #change yearly data to numeric if not already
+
+names(cat_totals)[2] <- "Continent" #rename continent column
+
+new_frame <- cat_totals #create new frame
+new_frame <- new_frame[FALSE, ]
+
+#now add the totals for other categories
+#create list of each continent to loop through
+unique <- c("Africa", "Americas", "Asia", "Europe", "Oceania", "China") 
+
+for (i in 1:length(unique)){ #for each of the continents
+  u_cont <- filter(cat_totals, Continent == unique[i])
+  
+#calculate the annual prod each year
+
+  for (b in 3:74){
+    a <- sum(u_cont[, b], na.rm = TRUE)
+    print(a)
+    new_frame[i, 2] <- unique[i]
+    new_frame[i, b] <-a #change row number 
+  }
+}
+
+new_frame <- new_frame[, c(2:74)] #cut out unnecessary columns
+
+#save this data
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/category_totals_bycontinent.csv")
+# write.csv(new_frame,file=NAME)
+```
+
+####STEP 3: Weight FCB scores by production data of continents --> Can start here since all data are saved
+```{r}
+#load in the FCB scores data
+speciesdata <- read.csv("/Users/aleahw/Documents/Master's!!/Fuzzy/FCB_scores_825.2.csv")
+speciesdata <- speciesdata[, -c(1)]
+speciesdata <- speciesdata[-c(4, 6, 8, 34, 36),] #delete duplicated nile tilapia and rainbow trout; delete Porphyra haitanensis and tenera because we will only use Porphyra yezoensis score
+
+#load in the totals
+totals <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/category_totals_bycontinent.csv")
+totals <- totals[, c(-1)]
+
+cat_totals <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prod_by_cat.csv")
+cat_totals <- cat_totals[, c(-1)] #need to delete first column for this one only
+```
+
+###F scores weighted by production of continents + China
+```{r F weighted by all production}
+
+# unique(cat_totals$Species) #52
+
+new_frame <- cat_totals #create new frame
+new_frame <- new_frame[FALSE, ]
+
+for (i in 1:nrow(speciesdata)){ #for each species
+  y <- nrow(new_frame) #reset nrow
+  sp <- speciesdata$species[i] #get one species
+  # print(sp)
+  f_score <- speciesdata$f[i] #get the F score for the species, CHANGE FOR B AND C
+  set <- filter(cat_totals, Species == sp, )
+  # print(set$Species)
+  # print(f_score)
+     for (z in 1:nrow(set)) { #for each row in the species set (for each continent)
+    for (b in 3:74) { #for each year
+      index <- f_score*set[z, b] #multiply score by that species' total production in each year
+      print(index)
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+      new_frame[y+z, 1] <- speciesdata[i, 1] #add species
+      new_frame[y+z, 2] <- set$Continent.Name.En[z] #add continent
+      
+            if(is.na(set$Continent.Name.En[z])) {x=FALSE
+    } else if (set$Continent.Name.En[z] == "Africa") {
+    index <- index/totals[1, b-1]
+    } else if (set$Continent.Name.En[z] == "Americas") {
+    index <- index/totals[2, b-1]
+    } else if (set$Continent.Name.En[z] == "Asia") {
+    index <- index/totals[3, b-1]
+    } else if (set$Continent.Name.En[z] == "Europe") {
+    index <- index/totals[4, b-1]
+    } else if (set$Continent.Name.En[z] == "Oceania") {
+    index <- index/totals[5, b-1]
+    } else
+    index <- index/totals[6, b-1]
+
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+    }
+     }
+}
+
+###Calculate the annual weighted mean for each continent
+
+weighted_indexes <- new_frame #create new frame
+weighted_indexes <- weighted_indexes[FALSE, ]
+
+#select one continent at a time, then sum all values for each year
+#create list of each continent to loop through
+unique <- c("Africa", "Americas", "Asia", "Europe", "Oceania", "China") 
+
+for (i in 1:length(unique)){ #for each of the continents
+  u_cont <- filter(new_frame, Continent.Name.En == unique[i], )
+  y <- nrow(new_frame) #reset nrow
+  
+#calculate the annual mean each year
+  for (b in 3:74){
+    a <- sum(u_cont[, b], na.rm = TRUE)
+    print(a)
+    
+    #how to store?
+    weighted_indexes[i, b] <- a   #add these numbers to the frame
+    weighted_indexes[i, 2] <- unique[i] #add continent
+  }
+}
+
+weighted_indexes <- weighted_indexes[, 2:74] #new frame with just the weighted scores each year
+
+## Make long to prepare for graphing
+colnames(weighted_indexes)[1] = "Region"
+
+
+weighted_indexes <- pivot_longer(weighted_indexes, cols = c(!Region),
+                                names_to = "Year", values_to = "Score")
+
+
+year_labs <- rep(2021:1950, times=6, each=1)
+print(year_labs)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  #replace each year with the actual year number from year_labs
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#SAVE
+# NAME <- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Fweighted_bycontinent.csv")
+# write.csv(weighted_indexes, file =NAME)
+```
+
+###C scores weighted by production of continents + China
+```{r C weighted by all production}
+
+new_frame <- cat_totals #create new frame
+new_frame <- new_frame[FALSE, ]
+
+for (i in 1:nrow(speciesdata)){ #for each species
+  y <- nrow(new_frame) #reset nrow
+  sp <- speciesdata$species[i] #get one species
+  # print(sp)
+  f_score <- speciesdata$c[i] #get the C score for the species
+  set <- filter(cat_totals, Species == sp, )
+  # print(set$Species)
+  # print(f_score)
+     for (z in 1:nrow(set)) { #for each row in the species set (for each continent)
+    for (b in 3:74) { #for each year
+      index <- f_score*set[z, b] #multiply score by that species' total production in each year
+      print(index)
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+      new_frame[y+z, 1] <- speciesdata[i, 1] #add species
+      new_frame[y+z, 2] <- set$Continent.Name.En[z] #add continent
+      
+            if(is.na(set$Continent.Name.En[z])) {x=FALSE
+    } else if (set$Continent.Name.En[z] == "Africa") {
+    index <- index/totals[1, b-1]
+    } else if (set$Continent.Name.En[z] == "Americas") {
+    index <- index/totals[2, b-1]
+    } else if (set$Continent.Name.En[z] == "Asia") {
+    index <- index/totals[3, b-1]
+    } else if (set$Continent.Name.En[z] == "Europe") {
+    index <- index/totals[4, b-1]
+    } else if (set$Continent.Name.En[z] == "Oceania") {
+    index <- index/totals[5, b-1]
+    } else
+    index <- index/totals[6, b-1]
+
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+    }
+     }
+}
+
+###Calculate the annual weighted mean for each continent
+
+weighted_indexes <- new_frame #create new frame
+weighted_indexes <- weighted_indexes[FALSE, ]
+
+#select one continent at a time, then sum all values for each year
+#create list of each continent to loop through
+unique <- c("Africa", "Americas", "Asia", "Europe", "Oceania", "China") 
+
+for (i in 1:length(unique)){ #for each of the continents
+  u_cont <- filter(new_frame, Continent.Name.En == unique[i], )
+  y <- nrow(new_frame) #reset nrow
+  
+#calculate the annual mean each year
+  for (b in 3:74){
+    a <- sum(u_cont[, b], na.rm = TRUE)
+    print(a)
+    
+    #how to store?
+    weighted_indexes[i, b] <- a   #add these numbers to the frame
+    weighted_indexes[i, 2] <- unique[i] #add continent
+  }
+}
+
+weighted_indexes <- weighted_indexes[, 2:74] #new frame with just the weighted scores each year
+
+## Make long to prepare for graphing
+colnames(weighted_indexes)[1] = "Region"
+
+
+weighted_indexes <- pivot_longer(weighted_indexes, cols = c(!Region),
+                                names_to = "Year", values_to = "Score")
+
+
+year_labs <- rep(2021:1950, times=6, each=1)
+print(year_labs)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  #replace each year with the actual year number from year_labs
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#SAVE
+# NAME <- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Cweighted_bycontinent.csv")
+# write.csv(weighted_indexes, file =NAME)
+```
+
+###B scores weighted by production of continents + China
+```{r B weighted by all production}
+
+new_frame <- cat_totals #create new frame
+new_frame <- new_frame[FALSE, ]
+
+for (i in 1:nrow(speciesdata)){ #for each species
+  y <- nrow(new_frame) #reset nrow
+  sp <- speciesdata$species[i] #get one species
+  # print(sp)
+  f_score <- speciesdata$b[i] #get the B score for the species
+  set <- filter(cat_totals, Species == sp, )
+  # print(set$Species)
+  # print(f_score)
+     for (z in 1:nrow(set)) { #for each row in the species set (for each continent)
+    for (b in 3:74) { #for each year
+      index <- f_score*set[z, b] #multiply score by that species' total production in each year
+      print(index)
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+      new_frame[y+z, 1] <- speciesdata[i, 1] #add species
+      new_frame[y+z, 2] <- set$Continent.Name.En[z] #add continent
+      
+            if(is.na(set$Continent.Name.En[z])) {x=FALSE
+    } else if (set$Continent.Name.En[z] == "Africa") {
+    index <- index/totals[1, b-1]
+    } else if (set$Continent.Name.En[z] == "Americas") {
+    index <- index/totals[2, b-1]
+    } else if (set$Continent.Name.En[z] == "Asia") {
+    index <- index/totals[3, b-1]
+    } else if (set$Continent.Name.En[z] == "Europe") {
+    index <- index/totals[4, b-1]
+    } else if (set$Continent.Name.En[z] == "Oceania") {
+    index <- index/totals[5, b-1]
+    } else
+    index <- index/totals[6, b-1]
+
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+    }
+     }
+}
+
+###Calculate the annual weighted mean for each continent
+
+weighted_indexes <- new_frame #create new frame
+weighted_indexes <- weighted_indexes[FALSE, ]
+
+#select one continent at a time, then sum all values for each year
+#create list of each continent to loop through
+unique <- c("Africa", "Americas", "Asia", "Europe", "Oceania", "China") 
+
+for (i in 1:length(unique)){ #for each of the continents
+  u_cont <- filter(new_frame, Continent.Name.En == unique[i], )
+  y <- nrow(new_frame) #reset nrow
+  
+#calculate the annual mean each year
+  for (b in 3:74){
+    a <- sum(u_cont[, b], na.rm = TRUE)
+    print(a)
+    
+    #how to store?
+    weighted_indexes[i, b] <- a   #add these numbers to the frame
+    weighted_indexes[i, 2] <- unique[i] #add continent
+  }
+}
+
+weighted_indexes <- weighted_indexes[, 2:74] #new frame with just the weighted scores each year
+
+## Make long to prepare for graphing
+colnames(weighted_indexes)[1] = "Region"
+
+
+weighted_indexes <- pivot_longer(weighted_indexes, cols = c(!Region),
+                                names_to = "Year", values_to = "Score")
+
+
+year_labs <- rep(2021:1950, times=6, each=1)
+print(year_labs)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  #replace each year with the actual year number from year_labs
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#SAVE
+# NAME <- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Bweighted_bycontinent.csv")
+# write.csv(weighted_indexes, file =NAME)
+```
+
+####STEP 4: Weight FCB scores by production in case study countries
+```{r}
+# #load in the FCB scores data (done above)
+speciesdata <- read.csv("/Users/aleahw/Documents/Master's!!/Fuzzy/FCB_scores_825.2.csv")
+speciesdata <- speciesdata[, -c(1)]
+speciesdata <- speciesdata[-c(4, 6, 8, 34, 36),] #delete duplicated nile tilapia and rainbow trout; delete Porphyra haitanensis and tenera because we will only use Porphyra yezoensis score
+
+#load in the totals
+totals <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/cat_totals_countries926.csv")
+totals <- totals[, c(-1)]
+
+cat_totals <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/prod_totals_countries926.csv")
+cat_totals <- cat_totals[, c(-1)] #need to delete first column for this one only
+
+```
+
+```{r}
+#find which species are in both this species dataset AND the country case study data, since not all species in speciesdata exist in country case study data
+library(generics)
+data_common1 <- generics::intersect(speciesdata[, 1], cat_totals[, 1])
+data_common1
+data_common1[1:36]
+
+#reduce species data down to just these species
+new_frame <- speciesdata #create new frame
+new_frame <- new_frame[FALSE, ]
+for (i in 1:36) { 
+  index <- filter(speciesdata, species == data_common1[i]) #add new row/species to the frame
+  print(index)
+  new_frame[i,] <- index   #add these numbers to the frame
+}
+
+speciesdata <- new_frame
+```
+
+###F scores weighted by production of case study countries
+```{r F weighted by all production}
+
+new_frame <- cat_totals #create new frame
+new_frame <- new_frame[FALSE, ]
+
+for (i in 1:nrow(speciesdata)){ #for each species
+  y <- nrow(new_frame) #reset nrow
+  sp <- speciesdata$species[i] #get one species
+  print(sp)
+  f_score <- speciesdata$f[i] #get the F score for the species, CHANGE FOR B AND C
+  set <- filter(cat_totals, Species == sp, )
+  print(set$Species)
+  print(f_score)
+     for (z in 1:nrow(set)) { #for each row in the species set (for each continent)
+    for (b in 3:74) { #for each year
+      index <- f_score*set[z, b] #multiply score by that species' total production in each year
+      print(index)
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+      new_frame[y+z, 1] <- speciesdata[i, 1] #add species
+      new_frame[y+z, 2] <- set$Continent.Name.En[z] #add continent
+      
+        if(is.na(set$Continent.Name.En[z])) {x=FALSE
+    } else if (set$Continent.Name.En[z] == "China") {
+    index <- index/totals[1, b-1]
+    } else if (set$Continent.Name.En[z] == "Norway") {
+    index <- index/totals[2, b-1]
+    } else if (set$Continent.Name.En[z] == "Chile") {
+    index <- index/totals[3, b-1]
+    } else if (set$Continent.Name.En[z] == "Egypt") {
+    index <- index/totals[4, b-1]
+    } else
+    index <- index/totals[5, b-1]
+
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+    }
+     }
+}
+
+###Calculate the annual weighted mean for each country
+
+weighted_indexes <- new_frame #create new frame
+weighted_indexes <- weighted_indexes[FALSE, ]
+
+#select one country at a time, then sum all values for each year
+#create list of each country to loop through
+unique <- c("China", "Norway", "Chile", "Egypt", "Nigeria") 
+
+for (i in 1:length(unique)){ #for each of the countries
+  u_cont <- filter(new_frame, Continent.Name.En == unique[i], )
+  y <- nrow(new_frame) #reset nrow
+  
+#calculate the annual mean each year
+  for (b in 3:74){
+    a <- sum(u_cont[, b], na.rm = TRUE)
+    print(a)
+    
+    #how to store?
+    weighted_indexes[i, b] <- a   #add these numbers to the frame
+    weighted_indexes[i, 2] <- unique[i] #add continent
+  }
+}
+
+weighted_indexes <- weighted_indexes[, 2:74] #new frame with just the weighted scores each year
+
+## Make long to prepare for graphing
+colnames(weighted_indexes)[1] = "Country"
+
+
+weighted_indexes <- pivot_longer(weighted_indexes, cols = c(!Country),
+                                names_to = "Year", values_to = "Score")
+
+
+year_labs <- rep(2021:1950, times=5, each=1)
+print(year_labs)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  #replace each year with the actual year number from year_labs
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#SAVE
+NAME <- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Fweighted_bycountry926.csv")
+write.csv(weighted_indexes, file =NAME)
+```
+
+###C scores weighted by production of case study countries
+```{r C weighted by all production}
+
+new_frame <- cat_totals #create new frame
+new_frame <- new_frame[FALSE, ]
+
+for (i in 1:nrow(speciesdata)){ #for each species
+  y <- nrow(new_frame) #reset nrow
+  sp <- speciesdata$species[i] #get one species
+  print(sp)
+  f_score <- speciesdata$c[i] #get the C score for the species
+  set <- filter(cat_totals, Species == sp, )
+  print(set$Species)
+  print(f_score)
+     for (z in 1:nrow(set)) { #for each row in the species set (for each continent)
+    for (b in 3:74) { #for each year
+      index <- f_score*set[z, b] #multiply score by that species' total production in each year
+      print(index)
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+      new_frame[y+z, 1] <- speciesdata[i, 1] #add species
+      new_frame[y+z, 2] <- set$Continent.Name.En[z] #add continent
+      
+        if(is.na(set$Continent.Name.En[z])) {x=FALSE
+    } else if (set$Continent.Name.En[z] == "China") {
+    index <- index/totals[1, b-1]
+    } else if (set$Continent.Name.En[z] == "Norway") {
+    index <- index/totals[2, b-1]
+    } else if (set$Continent.Name.En[z] == "Chile") {
+    index <- index/totals[3, b-1]
+    } else if (set$Continent.Name.En[z] == "Egypt") {
+    index <- index/totals[4, b-1]
+    } else
+    index <- index/totals[5, b-1]
+
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+    }
+     }
+}
+
+###Calculate the annual weighted mean for each country
+
+weighted_indexes <- new_frame #create new frame
+weighted_indexes <- weighted_indexes[FALSE, ]
+
+#select one country at a time, then sum all values for each year
+#create list of each country to loop through
+unique <- c("China", "Norway", "Chile", "Egypt", "Nigeria") 
+
+for (i in 1:length(unique)){ #for each of the countries
+  u_cont <- filter(new_frame, Continent.Name.En == unique[i], )
+  y <- nrow(new_frame) #reset nrow
+  
+#calculate the annual mean each year
+  for (b in 3:74){
+    a <- sum(u_cont[, b], na.rm = TRUE)
+    print(a)
+    
+    #how to store?
+    weighted_indexes[i, b] <- a   #add these numbers to the frame
+    weighted_indexes[i, 2] <- unique[i] #add continent
+  }
+}
+
+weighted_indexes <- weighted_indexes[, 2:74] #new frame with just the weighted scores each year
+
+## Make long to prepare for graphing
+colnames(weighted_indexes)[1] = "Country"
+
+
+weighted_indexes <- pivot_longer(weighted_indexes, cols = c(!Country),
+                                names_to = "Year", values_to = "Score")
+
+
+year_labs <- rep(2021:1950, times=5, each=1)
+print(year_labs)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  #replace each year with the actual year number from year_labs
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#SAVE
+NAME <- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Cweighted_bycountry926.csv")
+write.csv(weighted_indexes, file =NAME)
+```
+
+###B scores weighted by production of case study countries
+```{r F weighted by all production}
+
+new_frame <- cat_totals #create new frame
+new_frame <- new_frame[FALSE, ]
+
+for (i in 1:nrow(speciesdata)){ #for each species
+  y <- nrow(new_frame) #reset nrow
+  sp <- speciesdata$species[i] #get one species
+  print(sp)
+  f_score <- speciesdata$b[i] #get the B score for the species
+  set <- filter(cat_totals, Species == sp, )
+  print(set$Species)
+  print(f_score)
+     for (z in 1:nrow(set)) { #for each row in the species set (for each continent)
+    for (b in 3:74) { #for each year
+      index <- f_score*set[z, b] #multiply score by that species' total production in each year
+      print(index)
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+      new_frame[y+z, 1] <- speciesdata[i, 1] #add species
+      new_frame[y+z, 2] <- set$Continent.Name.En[z] #add continent
+      
+        if(is.na(set$Continent.Name.En[z])) {x=FALSE
+    } else if (set$Continent.Name.En[z] == "China") {
+    index <- index/totals[1, b-1]
+    } else if (set$Continent.Name.En[z] == "Norway") {
+    index <- index/totals[2, b-1]
+    } else if (set$Continent.Name.En[z] == "Chile") {
+    index <- index/totals[3, b-1]
+    } else if (set$Continent.Name.En[z] == "Egypt") {
+    index <- index/totals[4, b-1]
+    } else
+    index <- index/totals[5, b-1]
+
+      new_frame[y+z, b] <- index   #add these numbers to the frame
+    }
+     }
+}
+
+###Calculate the annual weighted mean for each country
+
+weighted_indexes <- new_frame #create new frame
+weighted_indexes <- weighted_indexes[FALSE, ]
+
+#select one country at a time, then sum all values for each year
+#create list of each country to loop through
+unique <- c("China", "Norway", "Chile", "Egypt", "Nigeria") 
+
+for (i in 1:length(unique)){ #for each of the countries
+  u_cont <- filter(new_frame, Continent.Name.En == unique[i], )
+  y <- nrow(new_frame) #reset nrow
+  
+#calculate the annual mean each year
+  for (b in 3:74){
+    a <- sum(u_cont[, b], na.rm = TRUE)
+    print(a)
+    
+    #how to store?
+    weighted_indexes[i, b] <- a   #add these numbers to the frame
+    weighted_indexes[i, 2] <- unique[i] #add continent
+  }
+}
+
+weighted_indexes <- weighted_indexes[, 2:74] #new frame with just the weighted scores each year
+
+## Make long to prepare for graphing
+colnames(weighted_indexes)[1] = "Country"
+
+
+weighted_indexes <- pivot_longer(weighted_indexes, cols = c(!Country),
+                                names_to = "Year", values_to = "Score")
+
+
+year_labs <- rep(2021:1950, times=5, each=1)
+print(year_labs)
+
+#rename year column in weighted_indexes
+for (i in 1:nrow(weighted_indexes)) {
+  #replace each year with the actual year number from year_labs
+  weighted_indexes$Year[i] <- year_labs[i]
+}
+
+weighted_indexes$Year <- as.numeric(weighted_indexes$Year) #make years numeric
+
+#SAVE
+NAME <- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/Bweighted_bycountry926.csv")
+write.csv(weighted_indexes, file =NAME)
+```
+
