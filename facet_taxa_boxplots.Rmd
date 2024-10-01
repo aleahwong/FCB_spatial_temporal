@@ -1,3 +1,4 @@
+
 ---
 title: "faceted_taxa_boxplots"
 author: "Aleah Wong"
@@ -132,10 +133,11 @@ merge <- rbind(merge, B_weighted_all)
 
 #graph
 together <- ggplot(merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
-  labs(y = "", x = "Year")+ #title = "FCB Potential of Aquaculture Weighted by 54 Major Species"
+  labs(y = "", x = "")+ #title = "FCB Potential of Aquaculture Weighted by 54 Major Species"
     theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
       scale_color_manual(name = "Index", values=tolpalettesub)+
-  ylim(48, 60)
+      scale_y_continuous(breaks = c(48, 50, 52, 54, 56, 58, 60))
+  # ylim(48, 60)
 
 
 #SAVE
@@ -147,15 +149,16 @@ together <- ggplot(merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =
 library(patchwork)
  # & xlab(NULL)
 
-fig <- Food / Climate / Biodiversity / together & theme(plot.margin = margin(1, 1, 1, 1))
+#Fig a) Climate
+#Fig b) Biodiv
+# Fig c) Food
+
+fig <- (Climate | Biodiversity) / (Food | together) & theme(plot.margin = margin(1, 1, 1, 1))
 
 fig <- fig + plot_layout(guides = 'collect')
 
 fig <- fig + plot_annotation(tag_levels = 'A') & 
-  theme(plot.tag = element_text(size = 10),
-        plot.tag.position = "left")
-
-fig
+  theme(plot.tag = element_text(size = 10))
 
 fig <- wrap_elements(panel = fig) +
   labs(tag = "Mean Index") +
@@ -166,7 +169,7 @@ fig <- wrap_elements(panel = fig) +
 
 fig
 
-ggsave("Fig1facet.png", fig, , units="in", width=6, height=8, dpi=600)
+ggsave("Fig1facet.png", fig, units="in", width=10, height=6, dpi=600)
 
 ```
 
@@ -502,7 +505,10 @@ perc_prod <- ggplot(weighting_totals2, aes(fill=category, y=Score, x=Year)) +
 ```
 
 ```{r}
-fig2 <- (C_perc|B_perc) / (F_perc|perc_prod) & theme(plot.margin = margin(1, 1, 1, 1)) & xlab(NULL) & ylab(NULL)
+fig2 <- (C_perc|B_perc) / (F_perc|perc_prod) & theme(plot.margin = margin(1, 1, 1, 1)) & xlab(NULL) & ylab(NULL) 
+#Fig a) Climate
+#Fig b) Biodiv
+#Fig c) Food
 
 fig2 <- fig2 + plot_layout(guides = "collect")
 
@@ -517,7 +523,6 @@ fig2 <- wrap_elements(panel = fig2) +
   )
 
 fig2
-
 
 ggsave("Fig2facet.png", fig2, , units="in", width=10, height=6, dpi=600)
 
