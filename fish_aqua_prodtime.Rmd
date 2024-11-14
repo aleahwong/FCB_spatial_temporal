@@ -1,0 +1,87 @@
+---
+title: "fish_aqua_prod_time"
+author: "Aleah Wong"
+date: '2024-11-12'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(tidyselect)
+library(tidyr)
+library(gapminder)
+```
+
+```{r}
+tolpalette <- c("#332288", "#117733", "#40B0A6", "#88CCEE", "#E1BE6A", "#CC6677", "#AA4499", "#882255")
+
+palette <- c("#88CCEE", "#AA4499")
+```
+
+```{r}
+data <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Data/capture_aqua_prod_time.csv")
+# str(data$Continent.Name.En)
+# str(data)
+
+data <- data[, c(1,2, 4:76)]
+
+colnames(data)[1] <- "Continent"
+colnames(data)[2] <- "Production"
+
+#sum by aqua vs capture for each year
+totals <- data %>%
+  group_by(data$Production) %>%
+  summarise(across(where(is.numeric), sum))
+
+colnames(totals)[1] <- "Type"
+
+#rename columns
+year_labs <- seq(2022, 1950)
+
+for (i in 2:ncol(totals)) {
+  #replace each year with the actual year number from year_labs
+
+  colnames(totals)[i] <- year_labs[i-1]
+}
+
+totals <- totals %>% 
+  pivot_longer(
+    cols = "2022":"1950", 
+    names_to = "Year", 
+    values_to = "Tons"
+  )
+
+# totals <- pivot_wider(totals, names_from = "Type", values_from = "Tons")
+
+#make numeric
+totals$Year <- as.numeric(totals$Year)
+
+#in order, earlier years first
+totals <- totals[order(totals$Year),]
+
+```
+
+```{r GRAPH}
+
+plot <- ggplot(totals, aes(x = Year, y = Tons, color = Type))+
+  geom_line(size = 1.2)+
+  labs(color = "")+
+  theme_classic()+
+  theme(axis.text.x = element_text(size = 10),
+        axis.title.x = element_text(size = 16),
+        axis.text.y = element_text(size = 10),
+        axis.title.y = element_text(size =16),
+        legend.title = element_text(size=15),
+        legend.text = element_text(size = 15))+
+      scale_color_manual(values=palette)+
+      geom_vline(xintercept = 1980, linetype = "dashed")+ #vertical lines
+      geom_vline(xintercept = 2000, linetype = "dashed")+
+      geom_vline(xintercept = 2021, linetype = "dashed")+
+        scale_x_continuous(breaks = c(1950, 1980, 2000, 2020))
+
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
+ggsave("prod_time.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+

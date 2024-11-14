@@ -1358,41 +1358,80 @@ crust_merge <- rbind(crust_merge, Bbycrust)
 setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Figures")
 
 #FINFISH
-plot <- ggplot(finfish_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
-  labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Finfish")+
-    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+finfish <- ggplot(finfish_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+  # labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Finfish")+
+  theme_classic()+
+  theme(axis.text.x = element_text(size = 15), axis.text.y = element_text(size = 15),
+          axis.title.x = element_blank(), axis.title.y = element_blank(),
+          legend.title = element_text(size=15), legend.text = element_text(size = 15))+
       scale_color_manual(name = "Index", values=cbPalette)+
-        ylim(45, 54)
+      scale_y_continuous(breaks = c(46, 48, 50, 52), limits = c(45, 54))
+
+        # ylim(45, 54)
 # ggsave("FCB_weightedby_finfish.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 
 #ALGAE
-plot <- ggplot(algae_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
-  labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Algae")+
-    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+algae <- ggplot(algae_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+  # labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Algae")+
+  theme_classic()+
+  theme(axis.text.x = element_text(size = 15), axis.text.y = element_text(size = 15),
+          axis.title.x = element_blank(), axis.title.y = element_blank(),
+          legend.title = element_text(size=15), legend.text = element_text(size = 15))+
       scale_color_manual(name = "Index", values=cbPalette)+
-        ylim(53, 67)
+      scale_y_continuous(breaks = c(55, 60, 65), limits = c(53, 67))
+        # ylim(53, 67)
 
 # ggsave("FCB_weightedby_algae.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 
 #MOLLUSCS
-plot <- ggplot(mollusc_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
-  labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Molluscs")+
-    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+molluscs <- ggplot(mollusc_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+  # labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Molluscs")+
+  theme_classic()+
+  theme(axis.text.x = element_text(size = 15), axis.text.y = element_text(size = 15),
+          axis.title.x = element_blank(), axis.title.y = element_blank(),
+          legend.title = element_text(size=15), legend.text = element_text(size = 15))+
       scale_color_manual(name = "Index", values=cbPalette)+
-  ylim(44, 66)
+      scale_y_continuous(breaks = c(45, 50, 55, 60, 65), limits = c(44, 66))
+  # ylim(44, 66)
 
 # ggsave("FCB_weightedby_molluscs.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 
 #CRUSTACEANS
-plot <- ggplot(crust_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
-  labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Crustaceans")+
-    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+crustaceans <- ggplot(crust_merge, aes(x=Year, y=Score, color = Index)) +geom_line(size =1)+
+  # labs(y = "Mean Index", title = "FCB Potential of Aquaculture Weighted by Crustaceans")+
+  theme_classic()+
+  theme(axis.text.x = element_text(size = 15), axis.text.y = element_text(size = 15),
+          axis.title.x = element_blank(), axis.title.y = element_blank(),
+          legend.title = element_text(size=15), legend.text = element_text(size = 15))+
       scale_color_manual(name = "Index", values=cbPalette)+
-  ylim(30, 55)
+      scale_y_continuous(breaks = c(35, 40, 45, 50, 55), limits = c(30, 55))
+  # ylim(30, 55)
 
 # ggsave("FCB_weightedby_crustaceans.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
 
 ```
+
+```{r}
+#facet graphs together
+
+faceted <- (finfish|molluscs) / (algae|crustaceans) & theme(plot.margin = margin(5, 5, 7, 5))
+# & xlab(NULL) & ylab(NULL) 
+faceted <- faceted + plot_layout(guides = "collect")
+
+faceted <- faceted + plot_annotation(tag_levels = 'a') & 
+  theme(plot.tag = element_text(size = 15),
+        plot.tag.position = c(0.04, 1.05))
+
+faceted <- wrap_elements(panel = faceted) +
+  labs(tag = "Mean Index") +
+  theme(plot.tag = element_text(size = 20, angle = 90),
+        plot.tag.position = "left")
+
+faceted
+
+ggsave("faceted_taxa_FCB.png", faceted, , units="in", width=10, height=6, dpi=600)
+```
+
 
 ####STEP 11: Correlations of FCB in species ###
 ```{r}
