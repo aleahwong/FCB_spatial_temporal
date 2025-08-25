@@ -1,0 +1,455 @@
+---
+title: "dataprep_temporal"
+author: "Aleah Wong"
+date: '2025-08-14'
+output: html_document
+---
+```{r}
+rm(list = ls())
+.rs.restartR()
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+############################################################
+1. Clean species names and prepare dataset (data saved/provided)
+2. Calculate edible weight
+3. Calculating production by taxa--use production values to weight FCB scores by taxonomic category
+4. Graphing production
+############################################################
+
+### STEP 1: Cleaning data to create a dataset with species, category and annual production; save data as "prod_clean.csv" (final dataset for graphing production) ############
+
+```{r}
+#load in FAO data to calculate total production in each year
+
+FAO_data <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/FAO_data.csv")
+
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025")
+
+#name all the year columns correctly
+year_names <- as.character(1950:2023)
+
+# Assign to columns 2 to 75
+colnames(FAO_data)[3:76] <- year_names
+```
+
+```{r Cleaning species names in the data so they align with species names in production dataset with FCB scores}
+
+#Make sure they are alphabetized and in the same order
+
+#fix gracilaria
+FAO_data$species[FAO_data$species == "Gracilaria spp"] <- "Gracilaria gracilis"
+FAO_data$common_name[FAO_data$common_name == "Gracilaria seaweeds"] <- "Ogonori" 
+
+#fix porphyra
+FAO_data$species[FAO_data$species == "Porphyra spp"] <- "Porphyra"
+FAO_data$common_name[FAO_data$common_name == "Nori NEI"] <- "Nori" 
+FAO_data$common_name[FAO_data$common_name == "Laver (Nori)"] <- "Nori" 
+
+# There is an extra porphyra species in the species data --> create duplicate
+FAO_data <- rbind(FAO_data, FAO_data[rep(38, 1), ])
+
+# #put rows in alphabetical order
+FAO_data <- FAO_data[order(FAO_data$species), ]
+
+FAO_data$species[38] <- "Porphyra haitanensis"
+FAO_data$species[39] <- "Porphyra yezoensis"
+
+#divide the porphyra data in half
+FAO_data[38:39, 3:76] <- FAO_data[38:39, 3:76] / 2
+
+#check
+v <- unique(FAO_data$species) #there should be 54 species
+
+#separate totals out:
+total_prod <- FAO_data %>%
+  filter(species == "Totals - Tonnes - live weight")
+
+#Remove this row from the FAO data
+FAO_data <- FAO_data[-53, ]
+```
+
+```{r Merging the datasets to get dataset with species and category}
+
+#CHECK THE SPECIES SCORE DATA TO MAKE SURE THEY MATCH
+
+#load in the FCB scores data, which has common names and taxonomic group
+speciesdata <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_1/Fuzzy/Scores/FCB_scores_2024.csv")
+
+#species data has a few extra columns to delete
+speciesdata <- speciesdata[, -c(1, 5, 9:12 )]
+
+#remove Eucheuma cottonii
+speciesdata <- speciesdata[!speciesdata$species == "Eucheuma cottonii",]  #remove E. Cottonii, as it is a duplicate
+
+#Fix some species names to match the FAO data
+speciesdata$species[speciesdata$species == "Catla catla"] <- "Labeo catla"
+speciesdata$species[speciesdata$species == "Ctenopharyngodon idellus"] <- "Ctenopharyngodon idella"
+speciesdata$species[speciesdata$species == "Laminaria japonica"] <- "Saccharina japonica"
+speciesdata$species[speciesdata$species == "Porphrya tenera"] <- "Pyropia tenera"
+speciesdata$species[speciesdata$species == "Larimichthys croceus"] <- "Larimichthys crocea"
+
+# #alphabetical order:
+speciesdata <- speciesdata[order(speciesdata$species), ]
+
+#delete duplicates
+speciesdata[33,]
+speciesdata[35,]
+speciesdata <- speciesdata[-c(33, 35),]
+
+#check that the columns match between species data and FAO prod data
+speciesdata$species == FAO_data$species
+
+#fix the taxonomic group categories
+speciesdata[speciesdata == "finfish_inland" | speciesdata == "finfish_marine"] <- "Finfish"
+speciesdata[speciesdata == "mollusc"] <- "Bivalve"
+speciesdata[speciesdata == "algae"] <- "Algae"
+speciesdata[speciesdata == "crustacean"] <- "Crustacean"
+
+# speciesdata <- speciesdata[order(speciesdata$species), ] #put in alphabetical order
+
+# #Save this dataset
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/speciesdataclean.csv")
+write.csv(speciesdata,file=NAME)
+
+# MERGE the species identification columns from speciesdata with the FAO data
+# # #create species and type from speciesdata, bind with category totals by species
+spplist <- speciesdata[, c("species", "common_name", "category")]
+FAO_data <- FAO_data[, -2]
+FAO_data <- merge(spplist, FAO_data, by="species")
+
+FAO_data[FAO_data == "finfish_inland" | FAO_data == "finfish_marine"] <- "Finfish"
+FAO_data[FAO_data == "mollusc"] <- "Bivalve"
+FAO_data[FAO_data == "algae"] <- "Algae"
+FAO_data[FAO_data == "crustacean"] <- "Crustacean"
+
+#SAVE AS CLEAN PRODUCTION DATA
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/prod_clean.csv")
+write.csv(FAO_data,file=NAME)
+```
+
+### STEP 2: Convert production in every year to edible weight using new dataset
+```{r}
+#load in the edible weight data
+
+edible <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_perc3.csv")
+
+#extra row for Eucheuma cottonii--remove
+# edible <- edible[!edible$species == "Eucheuma cottonii",]  #remove E. Cottonii, as it is a duplicate
+
+#Fix some species names to match the FAO data
+edible$species[edible$species == "Catla catla"] <- "Labeo catla"
+edible$species[edible$species == "Ctenopharyngodon idellus"] <- "Ctenopharyngodon idella"
+edible$species[edible$species == "Laminaria japonica"] <- "Saccharina japonica"
+edible$species[edible$species == "Porphrya tenera"] <- "Pyropia tenera"
+edible$species[edible$species == "Larimichthys croceus"] <- "Larimichthys crocea"
+
+# #alphabetical order:
+edible <- edible[order(edible$species), ]
+
+str(edible)
+str(FAO_data)
+
+#multiply the production in every year by the percentage of edible weight for each species
+#do this three times with the different columns
+
+# Separate species column
+species_col <- FAO_data[, 1:3]
+
+#1: Multiply only the numeric year columns, with the mean edible percentage
+scaled_mean <- FAO_data[, 4:77] * (edible$perc_mean /100)
+
+# Combine species column back with scaled data
+scaled_mean <- cbind(species_col, scaled_mean)
+
+# #Save this dataset
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighted_prod.csv")
+write.csv(scaled_mean,file=NAME)
+
+#2: Multiply only the numeric year columns, with the low edible percentage for inverts
+scaled_lowinvert <- FAO_data[, 4:77] * (edible$perc_biv_low /100)
+
+# Combine species column back with scaled data
+scaled_lowinvert <- cbind(species_col, scaled_lowinvert)
+
+# #Save this dataset
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighted_lowinvert.csv")
+write.csv(scaled_lowinvert,file=NAME)
+
+#3: Multiply only the numeric year columns, with the low edible percentage for inverts
+scaled_flive <- FAO_data[, 4:77] * (edible$perc_flive_bedible /100)
+
+# Combine species column back with scaled data
+scaled_flive <- cbind(species_col, scaled_flive)
+
+# #Save this dataset
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighted_flive.csv")
+write.csv(scaled_flive,file=NAME)
+```
+
+#graph of edible weight percentages?
+```{r}
+
+```
+
+###STEP 3: Calculating live weight production by ALL, then by each taxonomic group. We will use these total production values to weight FCB scores by taxonomic category. Save csv, "prodbytaxa_forweighting.csv"####
+```{r Create a dataframe, 'weighting totals', which holds production values by taxonomic group}
+
+library(dplyr)
+library(tidyr)
+
+# # #load in data
+# production_data <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/prod_clean.csv")
+# 
+# #remove the first column
+# production_data <- production_data[, -c(1)]
+# 
+# #name all the year columns correctly
+# year_names <- as.character(1950:2023)
+# 
+# # Assign to columns 2 to 75
+# colnames(production_data)[4:77] <- year_names
+
+prod_long <- FAO_data %>%
+  pivot_longer(
+    cols = `1950`:`2023`, 
+    names_to = "year",
+    values_to = "production"
+  ) %>%
+  mutate(year = as.integer(year))  # Ensure year is numeric
+
+# All species
+total_all <- prod_long %>%
+  group_by(year) %>%
+  summarise(total_production = sum(production, na.rm = TRUE))
+
+# Finfish only
+total_finfish <- prod_long %>%
+  filter(category == "Finfish") %>%
+  group_by(year) %>%
+  summarise(total_production = sum(production, na.rm = TRUE))
+
+# Algae only
+total_algae <- prod_long %>%
+  filter(category == "Algae") %>%
+  group_by(year) %>%
+  summarise(total_production = sum(production, na.rm = TRUE))
+
+# Bivalve only
+total_bivalve <- prod_long %>%
+  filter(category == "Bivalve") %>%
+  group_by(year) %>%
+  summarise(total_production = sum(production, na.rm = TRUE))
+
+# Crustaceans only
+total_crustacean <- prod_long %>%
+  filter(category == "Crustacean") %>%
+  group_by(year) %>%
+  summarise(total_production = sum(production, na.rm = TRUE))
+
+weighting_totals <- bind_rows(
+  total_all %>% mutate(group = "All"),
+  total_finfish %>% mutate(group = "Finfish"),
+  total_algae %>% mutate(group = "Algae"),
+  total_crustacean %>% mutate(group = "Crustacean"),
+  total_bivalve %>% mutate(group = "Bivalve"))
+
+# #SAVE
+NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/prodbytaxa_forweighting.csv")
+write.csv(weighting_totals,file=NAME)
+
+#Graph production over time by taxa
+ggplot(weighting_totals, aes(x=year, y=total_production, color = group)) +geom_line(size =1)+
+  labs(y = "Tons (Live Weight)", title = "Aquaculture Production by Taxonomic Group")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))+
+      scale_color_manual(name = "Taxa", values=c('#7D627F', '#7DBBC3', "pink", "orange", "lightgreen"))+
+   theme_minimal()
+
+# #SAVE
+# ggsave("prod_over_time_bytaxa.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+
+# model <- lm(total_production ~ year, data = weighting_totals)
+# summary(model)
+```
+
+#do the same thing for the edible weight datasets
+```{r}
+library(dplyr)
+library(tidyr)
+library(readr)
+
+# List of input files
+input_files <- c(
+  "/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighted_prod.csv",
+  "/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighted_lowinvert.csv",
+  "/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighted_flive.csv"
+)
+
+# Corresponding output file names
+output_files <- c(
+  "edible_weighting1.csv",
+  "edible_weighting2.csv",
+  "edible_weighting3.csv"
+)
+
+process_dataset <- function(file_path, output_path) {
+  # Load dataset
+  data <- read_csv(file_path)
+  
+  # Remove first column
+  data <- data[, -1]
+  
+  # Name year columns correctly (columns 4 to 77)
+  colnames(data)[4:77] <- as.character(1950:2023)
+  
+  # Pivot longer
+  data_long <- data %>%
+    pivot_longer(
+      cols = `1950`:`2023`,
+      names_to = "year",
+      values_to = "production"
+    ) %>%
+    mutate(year = as.integer(year))
+  
+  # Compute totals for all species
+  total_all <- data_long %>%
+    group_by(year) %>%
+    summarise(total_production = sum(production, na.rm = TRUE), .groups = "drop") %>%
+    mutate(group = "All")
+  
+  # Compute totals per category
+  category_totals <- list(
+    total_finfish = data_long %>%
+      filter(category == "Finfish") %>%
+      group_by(year) %>%
+      summarise(total_production = sum(production, na.rm = TRUE), .groups = "drop") %>%
+      mutate(group = "Finfish"),
+    
+    total_algae = data_long %>%
+      filter(category == "Algae") %>%
+      group_by(year) %>%
+      summarise(total_production = sum(production, na.rm = TRUE), .groups = "drop") %>%
+      mutate(group = "Algae"),
+    
+    total_bivalve = data_long %>%
+      filter(category == "Bivalve") %>%
+      group_by(year) %>%
+      summarise(total_production = sum(production, na.rm = TRUE), .groups = "drop") %>%
+      mutate(group = "Bivalve"),
+    
+    total_crustacean = data_long %>%
+      filter(category == "Crustacean") %>%
+      group_by(year) %>%
+      summarise(total_production = sum(production, na.rm = TRUE), .groups = "drop") %>%
+      mutate(group = "Crustacean")
+  )
+  
+  # Combine All + categories
+  weighting_totals <- bind_rows(total_all, bind_rows(category_totals))
+  
+  # Save to CSV
+  write_csv(weighting_totals, output_path)
+  
+  return(weighting_totals)
+}
+
+# Process all datasets
+results <- mapply(process_dataset, input_files, output_files, SIMPLIFY = FALSE)
+```
+
+###STEP 4: Graphing production of major species ###
+
+```{r Graph production of each species, split into graphs based on taxa}
+
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025")
+# 
+# #load in data (don't need to run steps 1-2)
+production_data <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/prod_clean.csv")
+
+#remove the first column
+production_data <- production_data[, -c(1)]
+
+#name all the year columns correctly
+year_names <- as.character(1950:2023)
+
+# Assign to columns 2 to 75
+colnames(production_data)[4:77] <- year_names
+
+# #first up, the finfish:
+finfish_prod <- production_data %>%
+  filter(species == "Ctenopharyngodon idellus" | species == "Hypophthalmichthys molitrix" | species == "Oreochromis niloticus (inland)" | species == "Salmo salar" | species == "Chanos chanos" | species == "Mugil cephalus") %>%
+  pivot_longer(
+    cols = `1950`:`2023`, 
+    names_to = "year",
+    values_to = "production"
+  ) %>%
+  mutate(year = as.integer(year)) 
+
+# #graph
+ggplot(finfish_prod, aes(x=year, y=production, color = species)) +geom_line(size =1)+
+  labs(y = "Tons (Live Weight)", title = "Production of Major Finfish Species Over Time")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))
+
+# # #SAVE in the figures folder
+# ggsave("prod_finfish.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+# --------------------------------------------------------------------------------
+# #algae:
+
+alg_prod <- production_data %>%
+  filter(species == "Laminaria japonica" | species == "Eucheuma denticulatum" | species == "Gracilaria gracilis" | species == "Undaria pinnatifida") %>%
+  pivot_longer(
+    cols = `1950`:`2023`, 
+    names_to = "year",
+    values_to = "production"
+  ) %>%
+  mutate(year = as.integer(year))
+
+# #graph
+ggplot(alg_prod, aes(x=year, y=production, color = species)) +geom_line(size =1)+
+  labs(y = "Tons (Live Weight)", title = "Production of Major Algae Species Over Time")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))
+#
+# # #SAVE
+# ggsave("prod_algae.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+# --------------------------------------------------------------------------------
+# #molluscs:
+
+moll_prod <- production_data %>%
+  filter(species == "Crassostrea virginica" | species == "Ruditapes philippinarum" | species == "Magallana gigas" | species == "Mizuhopecten yessoensis") %>%
+  pivot_longer(
+    cols = `1950`:`2023`, 
+    names_to = "year",
+    values_to = "production"
+  ) %>%
+  mutate(year = as.integer(year))
+
+# #graph
+ggplot(moll_prod, aes(x=year, y=production, color = species)) +geom_line(size =1)+
+  labs(y = "Tons (Live Weight)", title = "Production of Major Mollusc Species Over Time")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))
+# 
+# # #SAVE
+# ggsave("prod_mollusc.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+# -------------------------------------------------------------------------------
+# 
+# #crustaceans:
+
+crust_prod <- production_data %>%
+  filter(species == "Penaeus vannamei" | species == "Procambarus clarkii" | species == "Eriocheir sinensis") %>%
+  pivot_longer(
+    cols = `1950`:`2023`, 
+    names_to = "year",
+    values_to = "production"
+  ) %>%
+  mutate(year = as.integer(year))
+
+ggplot(crust_prod, aes(x=year, y=production, color = species)) +geom_line(size =1)+
+  labs(y = "Tons (Live Weight)", title = "Production of Major Crustacean Species Over Time")+
+    theme(axis.text.x = element_text(size = 10), axis.title.y = element_text(size=10))
+# 
+# # #SAVE
+# ggsave("prod_crust.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
