@@ -1,0 +1,529 @@
+---
+title: "Spatial analysis"
+author: "Aleah Wong"
+date: '2024-09-10'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls())
+.rs.restartR()
+```
+
+############################################################################################
+##TABLE OF CONTENTS
+
+STEP 1: Weight FCB scores by production data of case study regions
+
+STEP 2: Calculating 5-year FCB means and change in means for every region 
+
+STEP 3: Find theoretical FCB max (MFCB) for each region and calculate the percentage of MFCB that is equal to the difference in means
+
+STEP 4: Mapping ###### 
+
+############################################################################################
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(purrr)
+library(broom)
+
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+```
+
+```{r}
+
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025")
+
+speciesdata <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/speciesdataclean.csv")
+speciesdata <- speciesdata[, -1]
+
+FAO_data <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/prodbyregion.csv")
+
+FAO_data <- FAO_data[, -c(4, 5)]
+
+#name all the year columns correctly
+year_names <- as.character(1950:2023)
+
+colnames(FAO_data)[4:77] <- year_names
+
+FAO_long <- FAO_data %>%
+  pivot_longer(cols = `1950`:`2023`, 
+               names_to = "year", 
+               values_to = "production") %>%
+  mutate(year = as.integer(year))
+
+#Join with species scores
+
+data_joined <- FAO_long %>%
+  left_join(speciesdata, by = c("species"))
+```
+
+###### STEP 1: Weight FCB scores by production data of case study regions #######
+```{r}
+# Step 3: Define groups
+target_regions <- c("Africa", "Americas", "Asia", "Europe", "Oceania")
+case_countries <- c("China", "Indonesia", "Viet Nam", "India", 
+                    "Norway", "Egypt", "Chile")
+
+#no production data in Nigeria until 1990...
+
+# Step 4: Define region_case
+data_joined <- data_joined %>%
+  mutate(region_case = case_when(
+    country %in% case_countries ~ country,            # keep case-study countries
+    region == "Asia" & country == "China" ~ NA,       # EXCLUDE China from Asia
+    region %in% target_regions ~ region,              # keep region
+    TRUE ~ NA_character_
+  ))
+
+# Step 5: Drop rows that don’t belong to a region or case country
+data_joined <- data_joined %>%
+  filter(!is.na(region_case))
+
+# Step 6: Function to calculate weighted scores
+calc_weighted_scores <- function(data, score_col) {
+  data %>%
+    mutate(score = .data[[score_col]]) %>%
+    group_by(region_case, year) %>%
+    summarise(
+      total_prod = sum(production, na.rm = TRUE),
+      weighted_score = sum(score * production, na.rm = TRUE) / total_prod,
+      .groups = "drop"
+    ) %>%
+    mutate(score_type = score_col)
+}
+
+# Step 7: Apply function to all three score types (f, c, b)
+weighted_results <- map_dfr(c("f", "c", "b"), ~ calc_weighted_scores(data_joined, .x))
+
+# Step 8: Clean output
+weighted_results <- weighted_results %>%
+  arrange(region_case, score_type, year)
+
+# Example look
+head(weighted_results)
+
+```
+
+##### Visualization #######
+```{r}
+library(ggplot2)
+
+# Trend plot
+ggplot(weighted_results, aes(x = year, y = weighted_score, color = region_case)) +
+  geom_line(size = 1) +
+  geom_point(size = 1) +
+  facet_wrap(~ score_type, scales = "free_y") +  # separate panel for f, c, b
+  labs(
+    title = "Weighted Species Scores Over Time",
+    x = "Year",
+    y = "Weighted Score",
+    color = "Region / Country"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    legend.position = "bottom",
+    strip.text = element_text(size = 12)
+  )
+
+#Just the regions
+regionresults <- weighted_results %>%
+  filter(region_case %in%  c("Africa", "Americas", "Asia", "Europe", "Oceania"))
+
+ggplot(regionresults, aes(x = year, y = weighted_score, color = region_case)) +
+  geom_line(size = 1) +
+  geom_point(size = 1) +
+  facet_wrap(~ score_type, scales = "free_y") +  # separate panel for f, c, b
+  labs(
+    title = "Weighted Species Scores Over Time",
+    x = "Year",
+    y = "Weighted Score",
+    color = "Region / Country"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    legend.position = "bottom",
+    strip.text = element_text(size = 12))
+
+#Just asian countries
+asiancasestudy <- weighted_results %>%
+  filter(region_case %in%  c("China", "Indonesia", "Viet Nam", "India"))
+
+ggplot(asiancasestudy, aes(x = year, y = weighted_score, color = region_case)) +
+  geom_line(size = 1) +
+  geom_point(size = 1) +
+  facet_wrap(~ score_type, scales = "free_y") +  # separate panel for f, c, b
+  labs(
+    title = "Weighted Species Scores Over Time",
+    x = "Year",
+    y = "Weighted Score",
+    color = "Region / Country"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    legend.position = "bottom",
+    strip.text = element_text(size = 12))
+
+#case study countries
+casestudies <- weighted_results %>%
+  filter(region_case %in%  c("Norway", "Egypt", "Nigeria", "Chile"))
+
+# c("China", "Indonesia", "India", "Norway", "Egypt", "Nigeria", "Chile"))
+
+ggplot(casestudies, aes(x = year, y = weighted_score, color = region_case)) +
+  geom_line(size = 1) +
+  geom_point(size = 1) +
+  facet_wrap(~ score_type, scales = "free_y") +  # separate panel for f, c, b
+  labs(
+    title = "Weighted Species Scores Over Time",
+    x = "Year",
+    y = "Weighted Score",
+    color = "Region / Country"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    legend.position = "bottom",
+    strip.text = element_text(size = 12))
+
+```
+
+###### STEP 2: Calculating 5-year FCB means and change in means for every region #######
+```{r}
+
+means_5yr <- weighted_results %>%
+    filter((year >= 1976 & year <= 1980) | (year >= 2019 & year <= 2023)) %>%
+    group_by(region_case, score_type, 
+             period = case_when(
+               year >= 1976 & year <= 1980 ~ "1976-1980",
+               year >= 2019 & year <= 2023 ~ "2019-2023"
+             )) %>%
+    summarise(mean_score = mean(weighted_score, na.rm = TRUE), .groups = "drop") %>%
+    pivot_wider(names_from = period, values_from = mean_score) %>%
+    mutate(diff = `2019-2023` - `1976-1980`)
+
+# Step 1: Interannual SD from weighted_results
+interannual_sd <- weighted_results %>%
+  group_by(region_case, score_type) %>%
+  summarise(interannual_sd = sd(weighted_score, na.rm = TRUE), .groups = "drop")
+
+# Step 2: Join SD to results_summary
+means_5yr <- means_5yr %>%
+  left_join(interannual_sd, by = c("region_case", "score_type")) %>%
+  mutate(magnitude_of_change = diff / interannual_sd)
+
+# Step 3: Plot
+p_mag <- means_5yr %>%
+  ggplot(aes(x = score_type, y = magnitude_of_change, fill = region_case)) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(
+    title = "Magnitude of Change (Δ / Interannual SD)",
+    x = "Score type",
+    y = "Normalized change"
+  ) +
+  theme_classic() +
+  theme(legend.position = "bottom")
+
+p_mag
+
+#Just view the regions and magnitude of change
+
+mag <- means_5yr[, c(1, 2, 7)]%>%
+  pivot_wider(names_from = score_type, values_from = magnitude_of_change)
+
+colnames(mag)[2] <- "B mag"
+colnames(mag)[3] <- "C mag"
+colnames(mag)[4] <- "F mag"
+
+
+change <- means_5yr[, c(1, 2, 5)] %>%
+  pivot_wider(names_from = score_type, values_from = diff)
+
+```
+
+######STEP 3: Find theoretical FCB max (MFCB) for each region and calculate the percentage of MFCB that is equal to the difference in means ###### 
+```{r}
+#Find top-scoring species for each region
+
+#sort by region and then rank by highest-scoring species: Major continents not including China
+
+library(dplyr)
+
+regions_of_interest <- c("Africa","Americas","Asia","Europe","Oceania",
+                         "China","Chile","Egypt","India","Indonesia","Norway","Viet Nam")
+
+region_max <- data_joined %>%
+  filter(region_case %in% regions_of_interest) %>%
+  group_by(region_case) %>%
+  summarise(
+    max_f = max(f, na.rm = TRUE),
+    max_c = max(c, na.rm = TRUE),
+    max_b = max(b, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# --- Step 3: join max scores with the mag dataset ---
+mag_with_max <- change %>%
+  filter(region_case %in% regions_of_interest) %>%  # make sure we only keep matching ones
+  left_join(region_max, by = "region_case")
+
+# --- Step 4: calculate percentage of max ---
+mag_percent <- mag_with_max %>%
+  mutate(
+    perc_f = (f / max_f) * 100,
+    perc_c = (c / max_c) * 100,
+    perc_b = (b / max_b) * 100
+  )
+
+table <- mag_percent[, c(1, 2, 3, 4, 8, 9, 10)] %>%
+  left_join(mag, by = "region_case")
+
+####Save the top-scoring species for every region
+top_species <- data_joined %>%
+  filter(region_case %in% regions_of_interest) %>%
+  group_by(region_case) %>%
+  summarise(
+    top_f_species = species[which.max(f)],
+    top_c_species = species[which.max(c)],
+    top_b_species = species[which.max(b)],
+    .groups = "drop"
+  )
+```
+
+#STEP 4: Mapping
+```{r}
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(tidyr)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(patchwork)
+
+# --- Case-study countries and regions ---
+case_study_countries <- c("China","Indonesia","Vietnam","India",
+                          "Norway","Egypt","Chile","Nigeria")
+regions <- c("Africa","Americas","Asia","Europe","Oceania")
+score_types <- sort(unique(means_5yr$score_type))
+
+###Making the magnitude of change an absolute value
+mag2 <- means_5yr %>%
+  mutate(magnitude_of_change = abs(magnitude_of_change))
+
+
+# --- Regional magnitudes ---
+region_lookup <- mag2 %>%
+  filter(region_case %in% regions) %>%
+  group_by(region_case, score_type) %>%
+  summarise(magnitude_of_change = first(magnitude_of_change), .groups = "drop")
+
+
+# --- Case-study country magnitudes ---
+country_lookup <- mag2 %>%
+  filter(region_case %in% case_study_countries) %>%
+  group_by(region_case, score_type) %>%
+  summarise(mag_country = first(magnitude_of_change), .groups = "drop") %>%
+  rename(country = region_case)
+
+# --- Clean FAO countries ---
+country_region <- FAO_data %>%
+  select(country, region) %>%
+  distinct() %>%
+  filter(!country %in% c("FAO. 2025. FishStat: Global aquaculture production 1950-2023. [Accessed on 28 March 2025]. In: FishStatJ. Available at www.fao.org/fishery/en/statistics/software/fishstatj. Licence: CC-BY-4.0.",
+                         "Totals - Tonnes - live weight")) %>%
+  mutate(country = recode(country,
+                          "Viet Nam" = "Vietnam",
+                          "United States of America" = "USA",
+                          "Russian Federation" = "Russia",
+                          "Czechia" = "Czech Republic",
+                          "Türkiye" = "Turkey",
+                          "Republic of Korea" = "South Korea",
+                          "Democratic People's Republic of Korea" = "North Korea",
+                          "Iran (Islamic Republic of)" = "Iran",
+                          "Lao People's Democratic Republic" = "Laos",
+                          "Democratic Republic of the Congo" = "Congo (Kinshasa)",
+                          "Republic of the Congo" = "Congo (Brazzaville)",
+                          "Taiwan Province of China" = "Taiwan",
+                          "Bolivia (Plurinational State of)" = "Bolivia",
+                          "Syrian Arab Republic" = "Syria",
+                          "Venezuela (Bolivarian Republic of)" = "Venezuela",
+                          "Brunei Darussalam" = "Brunei",
+                          "Eswatini" = "Swaziland",
+                          "United Republic of Tanzania" = "Tanzania"
+  ))
+
+# --- Expand country-region data for all score types ---
+country_region_scored <- tidyr::crossing(country_region, score_type = score_types)
+
+# --- Assign magnitudes: prefer country, otherwise region ---
+map_data_with_mag <- country_region_scored %>%
+  left_join(region_lookup, by = c("region" = "region_case", "score_type")) %>%
+  left_join(country_lookup, by = c("country", "score_type")) %>%
+  mutate(magnitude_of_change = coalesce(mag_country, magnitude_of_change)) %>%
+  select(country, region, score_type, magnitude_of_change)
+
+# --- Load world map ---
+world <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  mutate(country = recode(name,
+                          "Viet Nam" = "Vietnam",
+                          "United States of America" = "USA",
+                          "Russian Federation" = "Russia",
+                          "Czechia" = "Czech Republic",
+                          "Türkiye" = "Turkey",
+                          "Republic of Korea" = "South Korea",
+                          "Democratic People's Republic of Korea" = "North Korea",
+                          "Iran (Islamic Republic of)" = "Iran",
+                          "Lao People's Democratic Republic" = "Laos",
+                          "Democratic Republic of the Congo" = "Congo (Kinshasa)",
+                          "Republic of the Congo" = "Congo (Brazzaville)",
+                          "Taiwan Province of China" = "Taiwan",
+                          "Bolivia (Plurinational State of)" = "Bolivia",
+                          "Syrian Arab Republic" = "Syria",
+                          "Venezuela (Bolivarian Republic of)" = "Venezuela",
+                          "Brunei Darussalam" = "Brunei",
+                          "Eswatini" = "Swaziland",
+                          "United Republic of Tanzania" = "Tanzania"
+  ))
+
+# --- Expand country data to all score types (keep geometry intact) ---
+map_data_expanded <- tidyr::crossing(
+  country = unique(world$country),
+  score_type = score_types
+) %>%
+  left_join(map_data_with_mag, by = c("country", "score_type"))
+
+# --- Join to world sf ---
+world_map <- world %>%
+  left_join(map_data_expanded, by = "country")
+
+# --- Fill missing magnitudes with continent average ---
+world_map <- world_map %>%
+  group_by(continent, score_type) %>%
+  mutate(magnitude_of_change = ifelse(
+    is.na(magnitude_of_change),
+    mean(magnitude_of_change, na.rm = TRUE),
+    magnitude_of_change
+  )) %>%
+  ungroup()
+
+# --- Debug missing countries ---
+missing_countries <- setdiff(world$country, world_map$country)
+print(missing_countries)  # Should be character(0)
+
+# --- Categorize magnitudes ---
+world_map <- world_map %>%
+  mutate(
+    mag_category = case_when(
+      country == "Antarctica" ~ NA_character_,   # force Antarctica to NA
+      magnitude_of_change < 1 ~ "Low",
+      magnitude_of_change < 2 ~ "Medium",
+      TRUE ~ "High"
+    ),
+    mag_category = factor(mag_category, levels = c("Low", "Medium", "High"))
+  )
+
+
+# --- Plot function (discrete fill, viridis palette) ---
+
+make_score_map <- function(score_type_label) {
+  ggplot(world_map %>% filter(score_type == score_type_label)) +
+    geom_sf(aes(fill = mag_category), color = "black", size = 0.4) +
+    scale_fill_viridis_d(option = "C", drop = FALSE, na.value = "grey80") +
+    theme_void() +
+    labs(title = "",
+         fill = "Magnitude of Change")
+}
+
+
+# --- Generate maps ---
+map_F <- make_score_map("f")
+map_C <- make_score_map("c")
+map_B <- make_score_map("b")
+
+map_F
+map_C
+map_B
+
+ggsave("Fmap2.png", map_F, width = 12, height = 6, dpi = 300)
+ggsave("Cmap2.png", map_C, width = 12, height = 6, dpi = 300)
+ggsave("Bmap2.png", map_B, width = 12, height = 6, dpi = 300)
+
+# --- Combine maps ---
+# combined_map <- (map_F / map_C / map_B) +
+#   plot_layout(guides = "collect") & theme(legend.position = "bottom")
+# 
+# combined_map
+
+# --- Save figure ---
+# ggsave("magnitude_change_map_final.png", combined_map, width = 12, height = 18, dpi = 300)
+
+```
+
+#to scale the circular labels
+```{r}
+library(dplyr)
+library(tidyr)
+
+scale_region_max <- function(region_max, min_diameter = 75, max_diameter = 200) {
+  
+  df_long <- region_max %>%
+    pivot_longer(
+      cols = starts_with("max_"),
+      names_to = "score_type",
+      values_to = "score"
+    ) %>%
+    mutate(score_type = sub("max_", "", score_type))
+  
+  # Scale each score_type independently
+  df_scaled <- df_long %>%
+    group_by(score_type) %>%
+    mutate(
+      diameter_px = round(
+        min_diameter +
+          (score - min(score, na.rm = TRUE)) /
+          (max(score, na.rm = TRUE) - min(score, na.rm = TRUE)) *
+          (max_diameter - min_diameter),
+        0
+      )
+    ) %>%
+    ungroup()
+  
+  # Build legend: for each score_type, min and max scores + diameters
+  legend_tbl <- df_long %>%
+    group_by(score_type) %>%
+    summarise(
+      min_score = min(score, na.rm = TRUE),
+      max_score = max(score, na.rm = TRUE),
+      min_diameter_px = min_diameter,
+      max_diameter_px = max_diameter,
+      .groups = "drop"
+    )
+  
+  list(
+    scaled = df_scaled,
+    legend = legend_tbl
+  )
+}
+
+result <- scale_region_max(region_max, min_diameter = 75, max_diameter = 200)
+region_max_scaled <- result$scaled
+legend_table <- result$legend
+
+```
