@@ -1,0 +1,1414 @@
+---
+title: "temporal_clean"
+author: "Aleah Wong"
+date: '2025-08-15'
+output: html_document
+---
+
+```{r}
+rm(list = ls())
+.rs.restartR()
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r}
+#Color palette with colorblind friendly colors
+
+cbPalette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#D55E00", "#CC79A7")
+
+cbPalette1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+tolpalettesub <- c("#DC267F", "#785EF0", "#648FFF")
+```
+
+############################################################
+Steps 1-4 are stored in the dataprep file
+1. Clean species names and prepare dataset (data saved/provided)
+2. Calculate edible weight
+3. Calculating production by taxa--use production values to weight FCB scores by taxonomic category
+4. Graphing production
+-----------------------------------------------
+5. Weight FCB scores by production (edible weight for F)
+6. Graphing weighted FCB scores together, weighted FCB scores for each taxa
+7. FCB Correlations over time and correlations of FCB in species
+8. Paired sample t-tests for differences between 1977-2000 and 2001-2023
+9. Percent contribution
+############################################################
+
+###STEP 5: Weight F, C and B scores by production ###
+```{r Loading in data}
+
+#Using FCB scores from chapter 1
+speciesdata <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/speciesdataclean.csv")
+speciesdata <- speciesdata[, -c(1)] #remove extra column
+
+#Production totals by taxonomic group for weighting:
+
+#EDIBLE MEAN weight for each taxa
+edibletotals1 <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighting1.csv")
+
+edibletotals1 <- edibletotals1 %>%
+  pivot_wider(
+    names_from = year,
+    values_from = total_production
+  )%>%
+  mutate(across(where(is.numeric), ~ round(.x, 0)))
+
+#LOW EDIBLE PERC
+edibletotals2 <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighting2.csv")
+
+edibletotals2 <- edibletotals2 %>%
+  pivot_wider(
+    names_from = year,
+    values_from = total_production
+  )%>%
+  mutate(across(where(is.numeric), ~ round(.x, 0)))
+
+#HIGH EDIBLE PERC
+edibletotals3 <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighting3.csv")
+
+edibletotals3 <- edibletotals3 %>%
+  pivot_wider(
+    names_from = year,
+    values_from = total_production
+  )%>%
+  mutate(across(where(is.numeric), ~ round(.x, 0)))
+
+#LIVE WEIGHT totals for each taxa
+livetotals <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/prodbytaxa_forweighting.csv")
+
+livetotals <- livetotals[, -c(1)]
+
+livetotals <- livetotals %>%
+  pivot_wider(
+    names_from = year,
+    values_from = total_production
+  )
+
+#reorder
+livetotals$group <- factor(livetotals$group, levels = c("All", "Finfish", "Algae", "Bivalve", "Crustacean"))
+livetotals <- livetotals %>% arrange(group)
+```
+
+```{r }
+
+#Process all the production data
+library(readr)
+library(dplyr)
+
+# List of input files
+input_files <- c(
+  "/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighted_prod.csv",
+  "/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighted_low.csv",
+  "/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/edible_weighted_high.csv",
+  "/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/prod_clean.csv"
+)
+
+# Desired variable names
+output_vars <- c("edibleprod1", "edibleprod2", "edibleprod3", "liveprod")
+
+process_dataset <- function(file_path) {
+  # Load dataset
+  data <- read_csv(file_path)
+  
+  # Remove first column
+  data <- data[, -1]
+  
+  # Rename year columns (assuming years start at column 4)
+  colnames(data)[4:77] <- as.character(1950:2023)
+  
+  # Rename group/category names
+  # data$category <- recode(data$category,
+  #                         "mollusc" = "Bivalve",
+  #                         "algae" = "Algae",
+  #                         "crustacean" = "Crustacean",
+  #                         "finfish" = "Finfish",
+  #                         "All" = "All")  # keep "All" if it exists
+  
+  return(data)
+}
+
+# Apply function to all files and assign to variables
+for (i in seq_along(input_files)) {
+  dataset <- process_dataset(input_files[i])
+  assign(output_vars[i], dataset, envir = .GlobalEnv)
+}
+
+
+# Each list contains the relevant dataset for each score type
+production_datasets <- list(
+  f_1 = liveprod,
+  f_2 = edibleprod1,
+  f_3 = edibleprod2,
+  f_4 = edibleprod3,
+  c = liveprod,
+  b = liveprod
+)
+
+weighting_totals_datasets <- list(
+  f_1 = livetotals,
+  f_2 = edibletotals1,
+  f_3 = edibletotals2,
+  f_4 = edibletotals3,
+  c = livetotals,
+  b = livetotals
+)
+```
+
+#Calculations
+```{r}
+
+calculate_weighted_score <- function(score_col, group_name, prod_data, group_totals_df) {
+  # Step 1: Long format of production data
+  prod_long <- prod_data %>%
+    pivot_longer(cols = `1950`:`2023`, names_to = "year", values_to = "production") %>%
+    mutate(year = as.integer(year))
+
+  # Step 2: Join with species scores
+  prod_with_scores <- prod_long %>%
+    left_join(speciesdata, by = c("species", "common_name", "category"))
+
+  # Step 3: Filter for group
+  if (group_name == "All") {
+    data <- prod_with_scores %>%
+      mutate(score = .data[[score_col]]) %>%
+      select(species, year, production, score, category)
+  } else {
+    data <- prod_with_scores %>%
+      filter(category == group_name) %>%
+      mutate(score = .data[[score_col]]) %>%
+      select(species, year, production, score, category)
+  }
+  
+  # Step 4: Prepare weighting totals
+  # group_totals_long <- group_totals_df %>%
+  #   pivot_longer(cols = `1950`:`2023`, names_to = "year", values_to = "group_total") %>%
+  #   rename(group = 1) %>%
+  #   mutate(year = as.integer(year))
+  # 
+  # if (group_name == "All") {
+  #   total_prod <- group_totals_long %>%
+  #     group_by(year) %>%
+  #     summarise(group_total = sum(group_total, na.rm = TRUE), .groups = "drop")
+  # } else {
+  #   total_prod <- group_totals_long %>%
+  #     filter(group == group_name)
+  # }
+  
+    group_totals_long <- group_totals_df %>%
+    pivot_longer(cols = `1950`:`2023`, names_to = "year", values_to = "group_total") %>%
+    rename(group = 1) %>%  #group name is in first column
+    mutate(year = as.integer(year))
+
+  total_prod <- group_totals_long %>%
+    filter(group == group_name)
+  
+  glimpse(total_prod)  # The one after filtering by group
+  
+  
+  
+  # Step 5: Weighted score
+  result <- data %>%
+    left_join(total_prod, by = "year") %>%
+    mutate(weighted = (score * production) / group_total) %>%
+    group_by(year) %>%
+    summarise(score = sum(weighted, na.rm = TRUE), .groups = "drop") %>%
+    mutate(group = group_name, score_type = score_col)
+  
+  return(result)
+}
+
+# Step 6: Run the function for all combinations
+library(tidyr)
+library(purrr)
+
+groups <- c("All", "Finfish", "Algae", "Crustacean", "Bivalve")
+
+# Use dataset keys instead of just "f", "c", "b"
+dataset_keys <- names(production_datasets)  
+# c("f_1", "f_2", "f_3", "f_4", "c", "b")
+
+# Expand grid of dataset key + group
+param_grid <- expand_grid(dataset_key = dataset_keys, group_name = groups)
+
+# Helper: map dataset_key to actual score type
+map_score_type <- function(key) {
+  if (grepl("^f_", key)) return("f")
+  if (key == "c") return("c")
+  if (key == "b") return("b")
+  stop(paste("Unknown dataset key:", key))
+}
+
+# Run calculation
+final_output <- pmap_dfr(
+  param_grid,
+  function(dataset_key, group_name) {
+    score_col <- map_score_type(dataset_key)
+    prod_data <- production_datasets[[dataset_key]]
+    weight_data <- weighting_totals_datasets[[dataset_key]]
+    
+    calculate_weighted_score(score_col, group_name, prod_data, weight_data)%>%
+      mutate(dataset = dataset_key)  # Add dataset label here
+  }
+)
+
+# Save as CSV
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025")
+# write_csv(final_output, "scores_weightedbytaxa.csv")
+```
+
+####STEP 6: Graphing weighted scores
+```{r}
+
+library(ggplot2)
+library(dplyr)
+
+final_output <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/scores_weightedbytaxa.csv")
+
+# Filter for group == "All"
+all_scores <- final_output %>%
+  filter(group == "All" & dataset %in% c("f_1", "f_2", "f_3", "f_4"))
+
+plot <- ggplot(all_scores, aes(x = year, y = score, color = dataset)) +
+  geom_line(linewidth = 0.5) +
+  geom_vline(xintercept = c(1980, 2000, 2023), linetype = "dashed", color = "gray40") +
+  scale_x_continuous(
+    breaks = c(1950, 1965, 1980, 1990, 2000, 2011, 2023),  # Midpoints for the labels
+    labels = c("1950", "I", "1980", "II", "2000", "III", "2023"),
+    limits = c(1950, 2024),
+    expand = expansion(mult = c(0.01, 0.01))) +
+  labs(
+      x = "", 
+      y = "Mean Index",
+    color = "Index") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 12),
+      plot.title = element_text(size = 14, face = "bold"),
+      legend.position = "top")+
+        scale_color_manual(name = "Index", values=cbPalette)+
+  scale_color_manual(
+        name = "Scenario",
+        breaks = c("f_1", "f_2", "f_3", "f_4"),   # order
+        labels = c("Live weight", "Mean edible weight", "Low estimate", "High estimate"),
+        values = cbPalette)
+
+plot 
+
+#Using edible weight reduces the F scores.
+
+#SAVE
+# ggsave("F_scenarios.png", plot, height = 6, width = 8, dpi = 600)
+```
+
+```{r}
+#calculate linear relationship--how much does using the low or high estimate of weight affect f scores? f scores by taxa?
+
+#Most likely scenario: mean edible weights; f_2
+#High estimate of weight for all taxa (assume 100% consumed): live weight; f_1
+#Low estimate of weight for inverts; f_3
+#Bonus scenario: live weight for finfish (100% use); mean edible weight for inverts
+
+#First, compare baseline (most likely, mean edible weight) f scores with f scores from HIGH estimates of weight:
+
+hi_estimates <- final_output %>%
+  filter(dataset == "f_1" | dataset == "f_2") %>%
+  group_by(year, group) %>%
+  mutate(diff = score[dataset == "f_1"] - score[dataset == "f_2"]) %>%
+  mutate(changeinF = diff/score[dataset == "f_2"]*100) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+#average percentage change in the F score:
+hi_estimates <- hi_estimates %>%
+  group_by(group) %>%
+  mutate(avg = mean(changeinF)) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+  ggplot(hi_estimates, aes(x = group, y = changeinF, color = group))+ geom_boxplot(outlier.shape = NA)+
+    stat_summary(fun=mean, geom='errorbar', width=0.5, color="black")+
+    theme(legend.position = "none")+
+    labs(title = "Using live weight instead of mean edible weight", y = "Percent change in F")
+
+#Next compare baseline to scores from LOW estimates of invert weight
+low_estimates <- final_output %>%
+  filter(dataset == "f_2" | dataset == "f_3") %>%
+  group_by(year, group) %>%
+  mutate(diff = score[dataset== "f_3"] - score[dataset== "f_2"]) %>%
+  mutate(changeinF = diff/score[dataset == "f_2"]*100) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+#average percentage change in the F score:
+low_estimates <- low_estimates %>%
+  group_by(group) %>%
+  mutate(avg = mean(changeinF)) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+  ggplot(low_estimates, aes(x = group, y = changeinF, color = group))+ geom_boxplot(outlier.shape = NA)+
+    stat_summary(fun=mean, geom='errorbar', width=0.5, color="black")+
+    theme(legend.position = "none")+
+    labs(title = "Using low edible weight instead of mean edible weight", y = "Percent change in F")
+
+#Next compare baseline to scores from the bonus scenario's estimates of invert weight
+lesslikely_estimates <- final_output %>%
+  filter(dataset == "f_2" | dataset == "f_4") %>%
+  group_by(year, group) %>%
+  mutate(diff = score[dataset== "f_4"] - score[dataset== "f_2"]) %>%
+  mutate(changeinF = diff/score[dataset == "f_2"]*100) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+#average percentage change in the F score:
+lesslikely_estimates <- lesslikely_estimates %>%
+  group_by(group) %>%
+  mutate(avg = mean(changeinF)) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+  ggplot(lesslikely_estimates, aes(x = group, y = changeinF, color = group))+ geom_boxplot(outlier.shape = NA)+
+    stat_summary(fun=mean, geom='errorbar', width=0.5, color="black")+
+    theme(legend.position = "none")+
+    labs(title = "Using live weight for finfish and mean edible weight for inverts", y = "Percent change in F")
+  
+#combine these into one figure, but only retain the "all"
+library(dplyr)
+
+# Extract values
+val1 <- low_estimates[1, 8]
+val2 <- hi_estimates[1, 8]
+val3 <- lesslikely_estimates[1, 8]
+
+# Build summary table
+avg_changes <- tibble(
+  Scenario = c("Low edible weight", "Live weight", "High edible weight"),
+  `Average percent change in F` = c(val1, val2, val3)
+)
+
+library(gt)
+
+# Create gt table
+avg_changes <- avg_changes %>%
+  gt() %>%
+  tab_header(title = "Average Percent Change in F")
+
+# Save as PNG
+# gtsave(avg_changes, "scenarioFchanges.png")
+```
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+
+# Filter for group == "All"
+all_scores <- final_output %>%
+  filter(group == "All" & dataset %in% c("f_2", "c", "b")) %>%
+  mutate(score_type = toupper(score_type))  # make F, C, B capital
+
+#Save just the mean edible weight F scores
+
+plot <- ggplot(all_scores, aes(x = year, y = score, color = score_type)) +
+  geom_line(size = 1) +
+  geom_vline(xintercept = c(1980, 2000, 2023), linetype = "dashed", color = "gray40") +
+  # scale_x_continuous(
+  #   breaks = c(1950, 1965, 1980, 1990, 2000, 2011, 2023),  # Midpoints for the labels
+  #   labels = c("1950", "I", "1980", "II", "2000", "III", "2023"),
+  #   limits = c(1950, 2024),
+  #   expand = expansion(mult = c(0.01, 0.01))) +
+    # Roman numerals on top, years on bottom
+  scale_x_continuous(
+    breaks = c(1950, 1980, 2000, 2023),        # bottom axis (years)
+    labels = c("1950", "1980", "2000", "2023"),
+    sec.axis = dup_axis(                 # top axis (Roman numerals)
+      breaks = c(1963, 1990, 2010),
+      labels = c("I", "II", "III"),
+      name = NULL
+    ))+
+  scale_color_manual(name = "", 
+                           breaks = c("F", "C", "B"),
+                           labels = c("Food Security", "Climate change", "Biodiversity"),
+                           element_text(size = 14),
+                           values=tolpalettesub)+
+  labs(
+      x = "", 
+      y = "Mean Index") +
+  theme_classic() +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.text.x.top = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 14),
+      plot.title = element_text(size = 14, face = "bold"),
+      legend.position = "top")
+        
+
+axis.text.x.top = element_text(size = 25, face = "bold")
+plot
+
+
+#SAVE
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025")
+# ggsave("FCB_weightedbyall.png", plot, height = 4, width = 8, dpi = 600) #make sure wd is set
+```
+
+##LINEAR REGRESSION
+```{r}
+library(dplyr)
+library(broom)
+library(ggplot2)
+
+# --- Step 1: Add periods ---
+data_with_periods <- final_output %>%
+  filter(dataset %in% c("f_2", "c", "b"),
+         group %in% c("Algae", "Bivalve", "Crustacean", "Finfish") ) %>%
+  mutate(period = case_when(
+    year <= 1980 ~ "I",
+    year <= 2000 ~ "II",
+    TRUE         ~ "III"
+  ))
+
+# --- Step 2: Get slopes with p-values ---
+slopes <- data_with_periods %>%
+  group_by(group, period, score_type) %>%
+  do(tidy(lm(score ~ year, data = .))) %>%
+  filter(term == "year") %>%
+  select(group, period, score_type, slope = estimate, p_value = p.value) %>%
+  ungroup() %>%
+  mutate(sig = case_when(
+    p_value < 0.001 ~ "***",
+    p_value < 0.01  ~ "**",
+    p_value < 0.05  ~ "*",
+    TRUE            ~ ""
+  ))
+
+# --- Step 3: Pick annotation positions ---
+annotations <- data_with_periods %>%
+  group_by(group, period, score_type) %>%
+  summarise(year = mean(year), y = mean(score), .groups = "drop") %>%
+  left_join(slopes, by = c("group", "period", "score_type")) %>%
+  mutate(label = paste0("Slope = ", round(slope, 3), " ", sig))
+
+# --- Step 4: Plot with slopes + significance ---
+plot <- ggplot(data_with_periods, aes(x = year, y = score, color = score_type, shape = period)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE, size = 1) +
+  geom_text(data = annotations,
+            aes(x = year, y = y, label = label, color = score_type),
+            inherit.aes = FALSE,
+            vjust = -1, size = 3.5) +
+  facet_wrap(~ group, scales = "free_y") +
+  theme_classic()
+
+#SAVE
+# ggsave("Slopes.png", plot, height = 8, width = 16, dpi = 800)
+
+
+############ how do the scores change from 1980 to 2023? ###########
+data_with_periods <- final_output %>%
+  filter(dataset %in% c("f_2", "c", "b"),
+         group %in% c("Algae", "Bivalve", "Crustacean", "Finfish") ) %>%
+  mutate(period = case_when(
+    year <= 1980 ~ "1950-1980",
+    TRUE         ~ "1981-2023"
+  ))
+
+slopes <- data_with_periods %>%
+  group_by(group, period, score_type) %>%
+  do(tidy(lm(score ~ year, data = .))) %>%
+  filter(term == "year") %>%
+  select(group, period, score_type, slope = estimate, p_value = p.value) %>%
+  ungroup() %>%
+  mutate(sig = case_when(
+    p_value < 0.001 ~ "***",
+    p_value < 0.01  ~ "**",
+    p_value < 0.05  ~ "*",
+    TRUE            ~ ""
+  ))
+
+annotations <- data_with_periods %>%
+  group_by(group, period, score_type) %>%
+  summarise(year = mean(year), y = mean(score), .groups = "drop") %>%
+  left_join(slopes, by = c("group", "period", "score_type")) %>%
+  mutate(label = paste0("Slope = ", round(slope, 3), " ", sig))
+
+plot <- ggplot(data_with_periods, aes(x = year, y = score, color = score_type, shape = period)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE, size = 1) +
+  geom_text(data = annotations,
+            aes(x = year, y = y, label = label, color = score_type),
+            inherit.aes = FALSE,
+            vjust = -1, size = 3.5) +
+  facet_wrap(~ group, scales = "free_y") +
+  theme_classic()
+
+# ggsave("Slopes_since1981.png", plot, height = 8, width = 16, dpi = 800)
+
+############ Scores weighted by all from 1980 to 2023? ###########
+data_with_periods <- final_output %>%
+  filter(dataset %in% c("f_2", "c", "b"),
+         group %in% c("All") ) %>%
+  mutate(period = case_when(
+    year <= 1980 ~ "1950-1980",
+    TRUE         ~ "1981-2023"
+  ))
+
+slopes <- data_with_periods %>%
+  group_by(group, period, score_type) %>%
+  do(tidy(lm(score ~ year, data = .))) %>%
+  filter(term == "year") %>%
+  select(group, period, score_type, slope = estimate, p_value = p.value) %>%
+  ungroup() %>%
+  mutate(sig = case_when(
+    p_value < 0.001 ~ "***",
+    p_value < 0.01  ~ "**",
+    p_value < 0.05  ~ "*",
+    TRUE            ~ ""
+  ))
+
+annotations <- data_with_periods %>%
+  group_by(group, period, score_type) %>%
+  summarise(year = mean(year), y = mean(score), .groups = "drop") %>%
+  left_join(slopes, by = c("group", "period", "score_type")) %>%
+  mutate(label = paste0("Slope = ", round(slope, 3), " ", sig))
+
+plot <- ggplot(data_with_periods, aes(x = year, y = score, color = score_type, shape = period)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE, size = 1) +
+  geom_text(data = annotations,
+            aes(x = year, y = y, label = label, color = score_type),
+            inherit.aes = FALSE,
+            vjust = -1, size = 3.5)+
+  theme_classic()
+
+# ggsave("Slopes_since1981_all.png", plot, height = 8, width = 16, dpi = 800)
+
+#save table
+```
+
+```{r}
+
+# Capitalize score types and filter to main taxonomic groups
+facet_data <- final_output %>%
+  filter(group %in% c("Finfish", "Algae", "Bivalve", "Crustacean") & dataset == c("f_2", "c", "b")) %>%
+  mutate(score_type = toupper(score_type))
+
+library(cowplot)
+library(patchwork)
+
+# --- Bigger global text size ---
+base_sz <- 16
+
+base_plot <- ggplot(facet_data, aes(x = year, y = score, color = score_type)) +
+  geom_line(linewidth = 1) +
+  geom_vline(xintercept = c(1980, 2000, 2023),
+             linetype = "dashed", color = "gray40") +
+  scale_x_continuous(
+    breaks = c(1965, 1990, 2011),
+    labels = c("I", "II", "III"),
+    limits = c(1950, 2023),
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(x = NULL, y = NULL, color = "Index") +
+  scale_color_manual(values = tolpalettesub) +
+  theme_classic(base_size = base_sz) +
+  theme(
+    strip.text = element_blank(),
+    legend.position = "bottom",
+    legend.margin = margin(t = -4),          # tighter gap plot↔legend
+    legend.text = element_text(size = base_sz),
+    legend.title = element_text(size = base_sz, face = "bold"),
+    plot.margin = margin(8, 8, 6, 12)        # a bit more left margin inside panels
+  )
+
+# Top row: hide x labels/ticks
+p_finfish <- base_plot %+% filter(facet_data, group == "Finfish") +
+  ggtitle("Finfish") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        plot.title = element_text(size = base_sz, face = "bold"))
+p_algae   <- base_plot %+% filter(facet_data, group == "Algae") +
+  ggtitle("Algae") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        plot.title = element_text(size = base_sz, face = "bold"))
+
+# Bottom row: keep x labels
+p_bivalve <- base_plot %+% filter(facet_data, group == "Bivalve") +
+  ggtitle("Bivalve") +
+  theme(plot.title = element_text(size = base_sz, face = "bold"))
+p_crust   <- base_plot %+% filter(facet_data, group == "Crustacean") +
+  ggtitle("Crustacean") +
+  theme(plot.title = element_text(size = base_sz, face = "bold"))
+
+combined <- (
+  (p_finfish + p_algae) /
+  (p_bivalve + p_crust)
+) +
+  plot_layout(guides = "collect", heights = c(1, 1)) &
+  theme(legend.position = "bottom")
+
+labeled <- combined +
+  plot_annotation(
+    tag_levels = "a", tag_suffix = ")",
+    theme = theme(
+      plot.tag = element_text(size = base_sz + 2, face = "bold"),
+      plot.margin = margin(6, 6, 2, 28)  # extra outer left margin for safety
+    )
+  )
+
+# Nudge y label inward (x = 0.035) so it doesn’t get clipped
+final_plot <- ggdraw() +
+  draw_plot(labeled) +
+  draw_label("Mean Index", x = 0.035, y = 0.5, angle = 90,
+             vjust = 0.5, size = base_sz + 1, fontface = "bold") +
+  draw_label("", x = 0.5, y = 0.01, vjust = 0, size = base_sz + 1)
+
+final_plot
+
+# Recommended save: larger figure + white background to avoid edge clipping
+# ggsave("faceted_taxa_FCB.png", final_plot, width = 12, height = 8, dpi = 300, bg = "white")
+
+
+# ggsave("faceted_taxa_FCB.png", final_plot, units="in", width=10, height=6, dpi=600)
+```
+
+######Boxplots
+```{r Graphing means in three time periods}
+
+#magnitude of F, C and B indices by taxonomic group in three time periods
+
+scores_3_periods <- final_output
+
+scores_3_periods$group <- factor(
+  scores_3_periods$group,
+  levels = c("Algae", "Bivalve", "Crustacean", "Finfish", "All"))
+
+#modify dataset: create three time periods
+scores_3_periods$year[scores_3_periods$year >= 1950 & scores_3_periods$year <= 1980] <- "1950-1980"
+scores_3_periods$year[scores_3_periods$year >= 1981 & scores_3_periods$year <= 2000] <- "1981-2000"
+scores_3_periods$year[scores_3_periods$year >= 2001 & scores_3_periods$year <= 2023] <- "2001-2023"
+
+#filter F, C and B
+scores_3_periodsF <- scores_3_periods %>%
+  filter(dataset == "f_2")
+
+scores_3_periodsC <- scores_3_periods %>%
+  filter(score_type == "c")
+
+scores_3_periodsB <- scores_3_periods %>%
+  filter(score_type == "b")
+
+#Graph F
+Food <- ggplot(scores_3_periodsF, aes(x = year, y=score, color = group))+ geom_boxplot()+
+  stat_summary(fun.y=mean,geom='point', position = position_dodge(width = .75))+
+  scale_y_continuous(limits = c(40, 60))+
+  geom_vline(xintercept = 1.5, linetype = "dashed")+ #vertical lines
+      geom_vline(xintercept = 2.5, linetype = "dashed")+
+      geom_vline(xintercept = 3.5, linetype = "dashed")+
+      labs(y = "Pf", x = "")+
+      theme_classic()+
+      theme(axis.text.x = element_text(size = 15), axis.title.x =
+      element_text(size = 15), axis.text.y = element_text(size = 15),
+      legend.title = element_text(size=15), legend.text =
+      element_text(size = 15), axis.title.y = element_text(size = 20, face = "bold"))+
+      scale_color_manual(
+        name = "Weighted By",
+        breaks = c("Algae", "Bivalve", "Crustacean", "Finfish", "All"),   # order
+        labels = c("Algae", "Bivalves", "Crustaceans", "Finfish", "All species"),
+        values = cbPalette)
+Food
+
+#Graph C
+Climate <- ggplot(scores_3_periodsC, aes(x = year, y=score, color = group))+ geom_boxplot()+
+  stat_summary(fun.y=mean,geom='point', position = position_dodge(width = .75))+
+  scale_y_continuous(limits = c(30, 70))+
+  geom_vline(xintercept = 1.5, linetype = "dashed")+ #vertical lines
+      geom_vline(xintercept = 2.5, linetype = "dashed")+
+      geom_vline(xintercept = 3.5, linetype = "dashed")+
+      labs(y = "Pc", x = "")+
+      theme_classic()+
+      theme(axis.text.x = element_text(size = 15), axis.title.x =
+      element_text(size = 15), axis.text.y = element_text(size = 15),
+      legend.title = element_text(size=15), legend.text =
+      element_text(size = 15), axis.title.y = element_text(size = 20, face = "bold"))+
+      scale_color_manual(
+        name = "Weighted By",
+        breaks = c("Algae", "Bivalve", "Crustacean", "Finfish", "All"),   # order
+        labels = c("Algae", "Bivalves", "Crustaceans", "Finfish", "All species"),
+        values = cbPalette)
+  
+#Graph B
+Biodiversity <- ggplot(scores_3_periodsB, aes(x = year, y=score, color = group))+ geom_boxplot()+
+  stat_summary(fun.y=mean,geom='point', position = position_dodge(width = .75))+
+  scale_y_continuous(limits = c(35, 70))+
+  geom_vline(xintercept = 1.5, linetype = "dashed")+ #vertical lines
+      geom_vline(xintercept = 2.5, linetype = "dashed")+
+      geom_vline(xintercept = 3.5, linetype = "dashed")+
+      labs(y = "Pb", x = "")+
+      theme_classic()+
+      theme(axis.text.x = element_text(size = 15), axis.title.x =
+      element_text(size = 15), axis.text.y = element_text(size = 15),
+      legend.title = element_text(size=15), legend.text =
+      element_text(size = 15), axis.title.y = element_text(size = 20, face = "bold"))+
+      scale_color_manual(
+        name = "Weighted By",
+        breaks = c("Algae", "Bivalve", "Crustacean", "Finfish", "All"),   # order
+        labels = c("Algae", "Bivalves", "Crustaceans", "Finfish", "All species"),
+        values = cbPalette)
+
+#FACET
+
+library(patchwork)
+
+# Add boxes to each sub-figure
+Food_boxed <- Food + theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1))
+Climate_boxed <- Climate + theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1))
+Biodiversity_boxed <- Biodiversity + theme(panel.border = element_rect(color = "black", fill = NA, linewidth = 1))
+
+# Combine with patchwork
+fig <- (Food_boxed / Biodiversity_boxed / Climate_boxed) +
+  plot_layout(guides = 'collect') & 
+  theme(
+    legend.position = "bottom", 
+    legend.box.background = element_rect(color = "black", linewidth = 1, fill = NA),  # box around legend
+    legend.margin = margin(5, 5, 5, 5)  # some breathing room inside legend box
+  )
+
+fig <- fig + plot_annotation(tag_levels = 'a') &
+  theme(plot.tag = element_text(size = 15, face = "bold"),
+        plot.tag.position = c(0, 1))
+
+fig <- wrap_elements(panel = fig) +
+  labs(tag = "Mean Index") +
+  theme(
+    plot.tag = element_text(size = 20, angle = 90),
+    plot.tag.position = "left"
+  )
+
+fig
+
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025")
+ggsave("Fig1facet.png", fig, units="in", width=10, height=10, dpi=600)
+
+```
+
+###STEP 7: Correlations over time
+
+```{r Finding correlations of FCB over time}
+
+#Filter for weighted by all species
+F_weighted_all <- final_output %>%
+  filter(group == "All" & dataset == "f_2")
+C_weighted_all <- final_output %>%
+  filter(group == "All" & score_type == "c")
+B_weighted_all <- final_output %>%
+  filter(group == "All" & score_type == "b")
+
+weighted_all <- final_output %>%
+  filter(group =="All")
+
+#Normality tests! --> Do the data from each of the 2 variables (x, y) follow a normal distribution?
+# Use Shapiro-Wilk normality test –> R function: shapiro.test()
+    # Null hypothesis: the data are normally distributed
+    # Alternative hypothesis (p < 0.05): the data are not normally distributed
+
+# Shapiro-Wilk normality test
+shapiro.test(F_weighted_all$score) # => NOT NORMAL; p-value = 0.002159
+shapiro.test(C_weighted_all$score) # NOT NORMAL; p = 4.832e-05
+shapiro.test(B_weighted_all$score) # NOT NORMAL; p = 0.0001265
+
+#Visual inspection of data normality using density plots and Q-Q plots (quantile-quantile plots). Density plots should show a bell-shaped distribution if data are normal. Q-Q plot draws the correlation between a given sample and the normal distribution.
+
+library(ggpubr)
+ggdensity(F_weighted_all$score, 
+          main = "Density plot of F scores",
+          xlab = "F score")
+ggqqplot(F_weighted_all$score) #NOT bell-shaped
+
+ggdensity(C_weighted_all$score, 
+          main = "Density plot of C scores",
+          xlab = "C score")
+ggqqplot(C_weighted_all$score) #NOT bell-shaped
+
+ggdensity(B_weighted_all$score, 
+          main = "Density plot of B scores",
+          xlab = "B score")
+ggqqplot(B_weighted_all$score) #NOT bell-shaped
+
+#non-normal distribution, so we will use the Kendall rank correlation coefficient or Kendall’s tau statistic, which is used to estimate a rank-based measure of association.
+
+cor_fc <- cor.test(F_weighted_all$score, C_weighted_all$score,  method="kendall") 
+
+cor_fb <- cor.test(F_weighted_all$score, B_weighted_all$score,  method="kendall") 
+
+cor_cb <- cor.test(C_weighted_all$score, B_weighted_all$score,  method="kendall") 
+
+# Extract results into a tibble
+library(dplyr)
+library(broom)  # for tidy() function
+
+results <- bind_rows(
+  tidy(cor_fc) %>% mutate(comparison = "F vs C"),
+  tidy(cor_fb) %>% mutate(comparison = "F vs B"),
+  tidy(cor_cb) %>% mutate(comparison = "C vs B")
+) %>%
+  select(comparison, estimate, p.value, method)
+
+print(results)
+
+############### over the different time periods: ############
+F_weighted_all <- final_output %>%
+  filter(group == "All" & dataset == "f_2") %>%
+  mutate(period = case_when(
+    year <= 1980 ~ "I",
+    year <= 2000 ~ "II",
+    TRUE         ~ "III"
+  ))
+
+C_weighted_all <- final_output %>%
+  filter(group == "All" & score_type == "c") %>%
+  mutate(period = case_when(
+    year <= 1980 ~ "I",
+    year <= 2000 ~ "II",
+    TRUE         ~ "III"
+  ))
+
+B_weighted_all <- final_output %>%
+  filter(group == "All" & score_type == "b") %>%
+  mutate(period = case_when(
+    year <= 1980 ~ "I",
+    year <= 2000 ~ "II",
+    TRUE         ~ "III"
+  ))
+
+F1 <- F_weighted_all %>%
+  filter(period == "I")
+shapiro.test(F1$score) # => NOT NORMAL; p-value = 0.006479
+
+F2 <- F_weighted_all %>%
+  filter(period == "II")
+shapiro.test(F2$score) # => NORMAL; p-value = 0.1561
+
+F3 <- F_weighted_all %>%
+  filter(period == "III")
+shapiro.test(F3$score) # => NORMAL; p-value = 0.1238
+
+C1 <- C_weighted_all %>%
+  filter(period == "I")
+shapiro.test(C1$score) # => NOT NORMAL; p-value = 0.0002142
+
+C2 <- C_weighted_all %>%
+  filter(period == "II")
+shapiro.test(C2$score) # => NORMAL; p-value = 0.2674
+
+C3 <- C_weighted_all %>%
+  filter(period == "III")
+shapiro.test(C3$score) # => NORMAL; p-value = 0.001609
+
+B1 <- B_weighted_all %>%
+  filter(period == "I")
+shapiro.test(B1$score) # => NOT NORMAL; p-value = 0.001856
+
+B2 <- B_weighted_all %>%
+  filter(period == "II")
+shapiro.test(B2$score) # => NORMAL; p-value = 0.267
+
+B3 <- B_weighted_all %>%
+  filter(period == "III")
+shapiro.test(B3$score) # => NOT NORMAL; p-value = 0.02515
+
+cor_fc1 <- cor.test(F1$score, C1$score,  method="kendall") 
+cor_fc2 <- cor.test(F2$score, C2$score,  method="pearson") #normal, so use Pearson
+cor_fc3 <- cor.test(F3$score, C3$score,  method="pearson")#normal, use Pearson
+
+resultsFC <- bind_rows(
+  tidy(cor_fc1) %>% mutate(comparison = "F vs C, 1950-1980"),
+  tidy(cor_fc2) %>% mutate(comparison = "F vs C, 1981 - 2000"),
+  tidy(cor_fc3) %>% mutate(comparison = "F vs C, 2001 - 2023")
+) %>%
+  select(comparison, estimate, p.value, method)
+
+print(resultsFC)
+
+cor_fb1 <- cor.test(F1$score, B1$score,  method="kendall") 
+cor_fb2 <- cor.test(F2$score, B2$score,  method="pearson") #normal, so use Pearson
+cor_fb3 <- cor.test(F3$score, B3$score,  method="kendall")
+
+resultsFB<- bind_rows(
+  tidy(cor_fb1) %>% mutate(comparison = "F vs B, 1950-1980"),
+  tidy(cor_fb2) %>% mutate(comparison = "F vs B, 1981 - 2000"),
+  tidy(cor_fb3) %>% mutate(comparison = "F vs B, 2001 - 2023")
+) %>%
+  select(comparison, estimate, p.value, method)
+
+print(resultsFB)
+
+cor_cb1 <- cor.test(C1$score, B1$score,  method="kendall") 
+cor_cb2 <- cor.test(C2$score, B2$score,  method="pearson") #normal, so use Pearson
+cor_cb3 <- cor.test(C3$score, B3$score,  method="kendall")
+
+resultsCB<- bind_rows(
+  tidy(cor_cb1) %>% mutate(comparison = "C vs B, 1950-1980"),
+  tidy(cor_cb2) %>% mutate(comparison = "C vs B, 1981 - 2000"),
+  tidy(cor_cb3) %>% mutate(comparison = "C vs B, 2001 - 2023")
+) %>%
+  select(comparison, estimate, p.value, method)
+
+print(resultsCB)
+
+#COMBINE
+resultsfinal <- bind_rows(
+  resultsFC, resultsFB, resultsCB
+) 
+
+resultsfinal
+
+```
+
+#Correlations of FCB in species ###
+```{r}
+library("ggpubr")
+library(ggplot2)
+
+# Shapiro-Wilk normality test
+shapiro.test(speciesdata$f) # => NOT NORMAL; p-value = 0.0157
+shapiro.test(speciesdata$c) # NORMAL; p-value = 0.1104
+shapiro.test(speciesdata$b) # NOT NORMAL; p-value = 0.01511
+
+#Visual inspection of data normality using density plots and Q-Q plots (quantile-quantile plots). Density plots should show a bell-shaped distribution if data are normal. Q-Q plot draws the correlation between a given sample and the normal distribution.
+ggdensity(speciesdata$f, 
+          main = "Density plot of F scores",
+          xlab = "F score")
+ggqqplot(speciesdata$f) #Bell-shaped
+
+ggdensity(speciesdata$c, 
+          main = "Density plot of C scores",
+          xlab = "C score")
+ggqqplot(speciesdata$c) #Not bell-shaped
+
+ggdensity(speciesdata$b, 
+          main = "Density plot of B scores",
+          xlab = "B score")
+ggqqplot(speciesdata$b) #NOT bell-shaped
+
+#Spearman rank correlation, assuming non-normal dist
+# The Kendall rank correlation coefficient or Kendall’s tau statistic is used to estimate a rank-based measure of association. This production_data may be used if the data do not necessarily come from a bivariate normal distribution.
+
+spcor_fc <- cor.test(speciesdata$f, speciesdata$c,  method="kendall") #SIG; tau = 0.4213836, p-value = 6.84e-06 Species F and C scores are moderately positively correlated
+
+spcor_fb <- cor.test(speciesdata$f, speciesdata$b,  method="kendall") #SIG; tau = 0.3665619; p-value = 9.243e-05 Species F and B scores are somewhat positively correlated
+
+spcor_cb <- cor.test(speciesdata$c, speciesdata$b,  method="kendall") #SIG; tau = 0.3301856; p-value = 0.0004288 Species B and C scores are somewhat positively correlated
+
+# Extract results into a tibble
+library(dplyr)
+library(broom)  # for tidy() function
+
+results <- bind_rows(
+  tidy(spcor_fc) %>% mutate(comparison = "F vs C"),
+  tidy(spcor_fb) %>% mutate(comparison = "F vs B"),
+  tidy(spcor_cb) %>% mutate(comparison = "C vs B")
+) %>%
+  select(comparison, estimate, p.value, method)
+
+print(results)
+```
+
+#####STEP 8: Paired sample t-tests for differences between 1977-2000 and 2001-2023
+
+```{r}
+library(dplyr)
+library(purrr)
+library(broom)
+
+# --- Step 1: Split periods ---
+period1 <- final_output %>%
+  filter(year >= 1978, year <= 2000, dataset %in% c("f_2","c", "b")) %>%
+  mutate(period_year = year - 1977)   # offset (1–20)
+
+period2 <- final_output %>%
+  filter(year >= 2001, year <= 2023, dataset %in% c("f_2","c", "b")) %>%
+  mutate(period_year = year - 2000)   # offset (1–20)
+
+# --- Step 2: Pair them ---
+paired <- inner_join(period1, period2,
+                     by = c("group", "score_type", "period_year"),
+                     suffix = c("_p1", "_p2")) %>%
+  mutate(diff = score_p2 - score_p1)
+
+# --- Step 3–5: Shapiro, then appropriate test ---
+test_results <- paired %>%
+  group_by(group, score_type) %>%
+  group_modify(~ {
+    df <- .x
+    
+    # Shapiro-Wilk on differences
+    diff_vals <- df$score_p1 - df$score_p2
+    sh <- shapiro.test(diff_vals)
+    test_type <- if (sh$p.value > 0.05) "paired t-test" else "Wilcoxon"
+    
+    # Perform the appropriate paired test
+    test_res <- if (test_type == "paired t-test") {
+      t.test(df$score_p1, df$score_p2, paired = TRUE)
+    } else {
+      wilcox.test(df$score_p1, df$score_p2, paired = TRUE)
+    }
+    
+    # Compute estimate (mean diff for t-test, median diff for Wilcoxon)
+    est <- if (test_type == "paired t-test") {
+      broom::tidy(test_res)$estimate
+    } else {
+      median(diff_vals, na.rm = TRUE)
+    }
+    
+    tibble(
+      n = nrow(df),
+      W = sh$statistic,
+      shapiro_p = sh$p.value,
+      test_type = test_type,
+      estimate = est,  # always signed!
+      stat = broom::tidy(test_res)$statistic,
+      p_value = broom::tidy(test_res)$p.value
+    )
+  }) %>%
+  ungroup()
+
+test_results
+
+test_results <- test_results %>%
+  mutate(across(c(W, shapiro_p, stat, p_value), ~ round(., 3)))
+
+test_results <- test_results %>%
+  mutate(
+    sig = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ ""
+    )
+  )
+
+library(dplyr)
+library(readr) # for write_csv
+
+# Format table for reporting
+test_results_formatted <- test_results %>%
+  mutate(
+    n = as.integer(n),
+    W = round(W, 3),
+    shapiro_p = ifelse(shapiro_p < 0.001, "<0.001", signif(shapiro_p, 3)),
+    estimate = round(estimate, 3),
+    stat = round(stat, 3),
+    p_value = ifelse(p_value < 0.001, "<0.001", signif(p_value, 3)),
+    test_type = ifelse(test_type == "paired t-test", "Paired t-test", "Wilcoxon")
+  ) %>%
+  rename(
+    Group = group,
+    Score_Type = score_type,
+    Sample_Size = n,
+    Shapiro_W = W,
+    Shapiro_p = shapiro_p,
+    Test = test_type,
+    Estimate = estimate,
+    Test_Statistic = stat,
+    P_Value = p_value
+  ) %>%
+  arrange(Group, Score_Type)
+
+# Save as CSV
+write_csv(test_results_formatted, "1977-2023_test_results.csv")
+```
+
+##### STEP 9: Percent contribution to index: % contribution of taxonomic groups relative to F, C, B relative to the proportion of total production ###
+```{r}
+weighting_totals <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/prodbytaxa_forweighting.csv") #annual production by taxonomic group
+
+weighting_totals <- weighting_totals[, -c(1)]
+
+#make wide
+weighting_totals <- weighting_totals %>%
+  pivot_wider(
+    names_from = year,
+    values_from = total_production
+  )
+
+#load in final scores, final_output
+all_taxa <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/scores_weightedbytaxa.csv")
+
+all_taxa <- all_taxa %>%
+  filter(dataset %in% c("f_2", "c", "b"))
+
+#First, calculate the % contribution of each taxa to annual production. We will eventually divide FCB indices by this proportion to find a ratio.
+
+#divide taxa production in each year by the total prod in that year
+
+library(dplyr)
+library(tidyr)
+
+totalproduction <- weighting_totals %>%
+  # pivot wider table into long format
+  pivot_longer(
+    cols = -group,
+    names_to = "year",
+    values_to = "Production"
+  ) %>%
+  # convert year labels from character to numeric
+  mutate(year = as.numeric(year),
+  # rename groups for publication
+    group = recode(group,
+                   "All" = "All species",
+                   "Bivalve" = "Bivalves",
+                   "Crustacean" = "Crustaceans")
+  ) %>%
+  # compute % contribution within each year
+  group_by(year) %>%
+  mutate(Perc_prod = Production / Production[group == "All species"] * 100) %>%
+  ungroup() %>%
+  # drop "All" since we only want taxa contributions
+  filter(group != "All species") %>%
+  # arrange chronologically
+  arrange(year)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+
+# --- Step 1: Reshape weighting_totals into long format ---
+prod_long <- weighting_totals %>%
+  pivot_longer(
+    cols = -group,
+    names_to = "year",
+    values_to = "production"
+  ) %>%
+  mutate(year = as.numeric(year))
+
+# --- Step 2: Join production with index data ---
+combined <- all_taxa %>%
+  left_join(prod_long, by = c("group", "year")) %>%
+  left_join(
+    prod_long %>%
+      filter(group == "All") %>%
+      select(year, total_prod = production),
+    by = "year"
+  ) %>%
+  left_join(
+    all_taxa %>%
+      filter(group == "All") %>%
+      select(year, score_type, all_score = score),
+    by = c("year", "score_type")
+  )
+
+# --- Step 3: Compute relative contribution  ---
+#relative contribution: divide perc contribution to index, by perc contribution to production
+
+results <- combined %>%
+  filter(group != "All") %>%   # remove "All" since it's always 1:1
+  mutate(
+    perc_prod = production / total_prod * 100,                    # % contribution to production: divide the taxa's production volume by the total volume of production in that year 
+    contrib_index = (production / total_prod * score) / all_score * 100,  # % contribution to index: #multiply taxa_perc by the index score of the taxa, then divide the product by the FCB score that year when weighted by all taxa
+    ratio = (contrib_index / perc_prod) * 100                     # ratio as percentage
+  ) %>%
+  select(year, group, score_type, perc_prod, contrib_index, ratio)
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(patchwork)  # to combine plots
+
+cbPalette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442")  # adjust as needed
+
+library(patchwork)
+
+# --- Production figure ---
+p_prod <- results %>%
+  group_by(year, group) %>%
+  summarise(perc_prod = mean(perc_prod), .groups = "drop") %>%
+  ggplot(aes(x = year, y = perc_prod, fill = group)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_vline(xintercept = c(1980, 2000, 2023), linetype = "dashed") +
+  scale_x_continuous(
+    breaks = c(1950, 1980, 2000, 2023),        # bottom axis (years)
+    labels = c("1950", "1980", "2000", "2023"),
+    sec.axis = dup_axis(                 # top axis (Roman numerals)
+      breaks = c(1963, 1990, 2010),
+      labels = c("I", "II", "III"),
+      name = NULL
+    ))+
+  scale_fill_manual(values = cbPalette) +
+  labs(title = "Production", x = "Year", y = "Percent", fill = "Taxa") +
+  theme_classic() +
+  theme(legend.position = "none",
+          axis.text.x.top = element_text(size = 20, face = "bold"),
+          axis.text.x = element_text(size = 20),
+          axis.title.x = element_blank(),
+          axis.text.y = element_text(size = 20),
+          axis.title.y = element_text(size = 20),
+        legend.title = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        title = element_text(size = 15))
+
+# --- Ratio figures (one per score_type) ---
+make_ratio_plot <- function(st) {
+  results %>%
+    filter(score_type == st) %>%
+    ggplot(aes(x = year, y = as.numeric(ratio), color = group)) +
+    geom_point() +
+    geom_hline(yintercept = 100, linetype = "solid") +
+    geom_vline(xintercept = c(1980, 2000, 2023), linetype = "dashed") +
+    scale_x_continuous(
+    breaks = c(1950, 1980, 2000, 2023),        # bottom axis (years)
+    labels = c("1950", "1980", "2000", "2023"),
+    sec.axis = dup_axis(                 # top axis (Roman numerals)
+      breaks = c(1963, 1990, 2010),
+      labels = c("I", "II", "III"),
+      name = NULL
+    ))+
+    scale_y_continuous(
+    labels = function(x) x / 100)+
+    scale_color_manual(values = cbPalette, guide = "none") +
+    labs(title = paste("Relative contribution to", toupper(st)),
+         x = "Year", y = "Ratio") +
+    theme_classic() +
+    theme(legend.position = "none",
+          axis.text.x.top = element_text(size = 20, face = "bold"),
+          axis.text.x = element_text(size = 20),
+          axis.title.x = element_blank(),
+          axis.text.y = element_text(size = 20),
+          axis.title.y = element_text(size = 20),
+        legend.title = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        title = element_text(size = 15))
+}
+
+p_f <- make_ratio_plot("f")
+p_c <- make_ratio_plot("c")
+p_b <- make_ratio_plot("b")
+
+# --- Combine all four equally, with panel labels and one legend ---
+# final_plot <- (p_prod + labs(tag = "(a)") | p_f + labs(tag = "(b)")) /
+#               (p_c + labs(tag = "(c)")   | p_b + labs(tag = "(d)")) +
+#   plot_layout(guides = "collect") &
+#   theme(legend.position = "bottom")
+# 
+# final_plot
+
+fig2 <- (p_prod|p_f) / (p_b|p_c) & theme(plot.margin = margin(7, 1, 1, 1)) 
+# & xlab(NULL) & ylab(NULL) 
+#Fig a) Climate
+#Fig b) Biodiv
+#Fig c) Food
+
+fig2 <- fig2 + plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+
+fig2 <- fig2 + plot_annotation(tag_levels = 'a') & 
+  theme(plot.tag = element_text(size = 20),
+        plot.tag.position = c(0.04, 1))
+
+fig2 <- wrap_elements(panel = fig2) +
+  theme(
+    plot.tag = element_text(size = 20, angle = 90),
+    plot.tag.position = "left")
+
+fig2
+
+# ggsave("contributiontoindex.png", fig2, width = 10, height = 6, dpi = 300)
+```
+
+#graphing production of fisheries and aquaculture over time
+```{r}
+
+tolpalette <- c("#332288", "#117733", "#40B0A6", "#88CCEE", "#E1BE6A", "#CC6677", "#AA4499", "#882255")
+
+palette <- c("#88CCEE", "#AA4499")
+
+prod <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025/total_capture_aqua_prod.csv")
+
+# Name year columns correctly (columns 4 to 77)
+  colnames(prod)[2:75] <- as.character(1950:2023)
+  
+# Pivot longer
+  data_long <- prod %>%
+    pivot_longer(
+      cols = `1950`:`2023`,
+      names_to = "year",
+      values_to = "production"
+    ) %>%
+    mutate(year = as.integer(year))
+  
+plot <- ggplot(data_long, aes(x = year, y = production, color = source)) +
+  geom_line(size = 1.2) +
+  
+  # Highlight ranges
+  annotate("rect", xmin = 1976, xmax = 1980, ymin = -Inf, ymax = Inf,
+           alpha = 0.2, fill = "skyblue") +
+  annotate("rect", xmin = 2019, xmax = 2023, ymin = -Inf, ymax = Inf,
+           alpha = 0.2, fill = "orange") +
+  
+  # Labels for highlighted ranges
+  annotate("text", x = 1978, y = max(data_long$production) * 1.05,
+           label = "1976–1980", size = 8, fontface = "bold", color = "skyblue4") +
+  annotate("text", x = 2021, y = max(data_long$production) * 1.05,
+           label = "2019–2023", size = 8, fontface = "bold", color = "orange4") +
+  
+  labs(color = "", y = "Production, millions of tons (Live weight)") +
+  scale_y_continuous(
+    labels = function(x) x / 1e6)+   # divide all y-axis ticks by 1,000,000
+  scale_color_manual(values = palette) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(size = 25),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(size = 25),
+    axis.title.y = element_text(size = 25),
+    legend.title = element_text(size = 25),
+    legend.text = element_text(size = 25),
+    axis.text.x.top = element_text(size = 25, face = "bold"),
+    plot.margin = margin(10, 20, 10, 10) # top, right, bottom, left
+  ) +
+  
+  # Vertical lines for eras
+  geom_vline(xintercept = 1980, linetype = "dashed") +
+  geom_vline(xintercept = 2000, linetype = "dashed") +
+  geom_vline(xintercept = 2023, linetype = "dashed") +
+  
+  # Roman numerals on top, years on bottom
+  scale_x_continuous(
+    breaks = c(1950, 1980, 2000, 2023),        # bottom axis (years)
+    labels = c("1950", "1980", "2000", "2023"),
+    sec.axis = dup_axis(                 # top axis (Roman numerals)
+      breaks = c(1963, 1990, 2010),
+      labels = c("I", "II", "III"),
+      name = NULL
+    )
+  )
+
+plot
+
+# 
+# plot <-
+#   ggplot(data_long, aes(x = year, y = production, color = source))+
+#   geom_line(size = 1.2)+
+#   labs(color = "", y = "Tons (Live weight)")+
+#   theme_classic()+
+#   theme(axis.text.x = element_text(size = 15),
+#         axis.title.x = element_blank(),
+#         axis.text.y = element_text(size = 10),
+#         axis.title.y = element_text(size =16),
+#         legend.title = element_text(size=15),
+#         legend.text = element_text(size = 15))+
+#       scale_color_manual(values=palette)+
+#       geom_vline(xintercept = 1980, linetype = "dashed")+ #vertical lines
+#       geom_vline(xintercept = 2000, linetype = "dashed")+
+#       geom_vline(xintercept = 2023, linetype = "dashed")+
+#         scale_x_continuous(breaks = c(1963, 1990, 2010), labels = c("I", "II", "III"))
+          
+setwd("/Users/aleahw/Documents/Master's!!/Chapter_2/Rerun_Aug2025")
+# ggsave("prod_time.png", plot, height = 8, width = 18, dpi = 800) #make sure wd is set
+
+```
+
+
