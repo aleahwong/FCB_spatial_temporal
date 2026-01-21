@@ -1,0 +1,750 @@
+---
+title: "Tidy_fuzzy_yearly"
+author: "Aleah Wong"
+date: '2023-08-25'
+output: html_document
+---
+
+```{r}
+rm(list = ls())
+.rs.restartR()
+```
+
+```{r}
+library(plyr)
+library(tidyr)
+library(tidyverse)
+library(dplyr)
+library(rfishbase)
+
+sppdata <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Revisions January 2025/Re-analysis with TL data/updated_traits.csv")
+
+#Delete extra first column
+sppdata <- sppdata[, -1]
+
+sppdata <- sppdata %>%
+  pivot_wider(names_from = trait, values_from = value)
+
+#convert double to integer in the new data
+sppdata$c_seq <- as.integer(sppdata$c_seq)
+sppdata$OA_buff <- as.integer(sppdata$OA_buff)
+sppdata$PH_sensitivity_taxa <- as.integer(sppdata$PH_sensitivity_taxa)
+sppdata$structure <- as.integer(sppdata$structure)
+```
+
+```{r}
+#calculate the percentage of each nutrient
+sppdata$Ca_perc = sppdata$Ca_mg_100g/560*100
+sppdata$Fe_perc = sppdata$Fe_mg_100g/14.3*100
+sppdata$Se_perc = sppdata$Se_ug_100g/16.33*100
+sppdata$Zn_perc = sppdata$Zn_mg_100g/4.33*100
+sppdata$A_perc = sppdata$A_ug_100g/280*100
+sppdata$protein_perc = sppdata$Protein_g_100g/14.3*100
+sppdata$omega_perc = sppdata$Omega_g_100g/0.7*100
+
+for (i in 1:length(sppdata$Ca_perc)) {
+  ifelse(sppdata$Ca_perc[i]>100, sppdata$Ca_perc[i]<-100, sppdata$Ca_perc)
+  ifelse(sppdata$Fe_perc[i]>100, sppdata$Fe_perc[i]<-100, sppdata$Fe_perc)
+  ifelse(sppdata$Se_perc[i]>100, sppdata$Se_perc[i]<-100, sppdata$Se_perc)
+  ifelse(sppdata$Zn_perc[i]>100, sppdata$Zn_perc[i]<-100, sppdata$Zn_perc)
+  ifelse(sppdata$A_perc[i]>100, sppdata$A_perc[i]<-100, sppdata$A_perc)
+  ifelse(sppdata$protein_perc[i]>100, sppdata$protein_perc[i]<-100, sppdata$protein_perc)
+  ifelse(sppdata$omega_perc[i]>100, sppdata$omega_perc[i]<-100, sppdata$omega_perc)
+}
+
+#all NAs are 0:
+sppdata[is.na(sppdata)] <- 0
+
+sppdata$micron <- sppdata$Ca_perc+sppdata$Fe_perc+sppdata$Se_perc+sppdata$Zn_perc+sppdata$A_perc
+sppdata$macron <- sppdata$protein_perc+sppdata$omega_perc
+
+# class(sppdata$micron)
+```
+
+```{r}
+
+foodtraits <- sppdata[, c("species", "year", "agg_trophic", "spatial", "temp_range_c", "pO2_min_mbar", "N_range_µmol.kg", "P_range_µmol.kg", "growth_rate_K", "max_size_cm", "feed_eff_trophic", "abs_fecundity", "micron", "macron")]
+
+# head(foodtraits)
+
+climatetraits <- sppdata[, c("species", "year", "rep_freq_year", "sal_range", "temp_range_c", "pO2_min_mbar", "P_range_µmol.kg", "N_range_µmol.kg", "feed_eff_trophic", "PH_sensitivity_taxa", "c_seq", "OA_buff")]
+
+# head(climatetraits)
+
+biodivtraits <- sppdata[, c("species", "year", "lat_range_degrees", "geog_range_km2", "abs_fecundity", "growth_rate_K", "agg_trophic", "feed_eff_trophic", "bioremed", "structure")]
+head(biodivtraits)
+```
+
+THE FUZZY SETS for each variable/trait (lists), based on quartiles
+```{r}
+#c(low), c(med), c(high), c(v high)
+#start low fuzzy sets from 0 to penalize NAs (which were converted to 0)
+
+#FOOD SECURITY Fuzzy Variables
+#Low, moderate, high, very high
+AggressVar<- list(c(1, 1, 1.5, 2.5),c(1.5, 2.5, 3.5),c(2.5, 3.5, 4.5),c(3.5, 4.5, 5, 5)) #starts at one due to known categories
+SpatialVar<-list(c(0,0,20,40),c(20,40,60),c(40,60,80),c(60,80,101,101)) #goes to 101 to include 100
+TempVar<-list(c(0, 0, 8, 12),c(8, 12, 17),c(12,17,25),c(17,25,50,50))
+pO2Var <- list(c(0,0,141,183), c(141, 183, 187), c(183,187,215), c(187,215,250,250)) 
+NitrateVar <- list(c(0,0,12,16), c(12, 16, 24), c(16,24,24.2), c(24,24.2,25,25)) 
+PhosVar <- list(c(0,0,0.9,1), c(0.9, 1, 1.5), c(1,1.5,2), c(1.5,2,2.5,2.5)) 
+GrowthVar<-list(c(0,0,0.2,0.3),c(0.2,0.3,0.5),c(0.3,0.5,2),c(0.5,2,2.5, 2.5))
+# MaturityVar<-list(c(0,0,1,2),c(1,2,3),c(2,3,9),c(3,9,10,10)) 
+SizeVar<-list(c(0,0,42,102),c(42,102,152),c(102,152,500),c(152,500,600,600))
+FeedVar<- list(c(1, 1, 1.5, 2.5),c(1.5, 2.5, 3.5),c(2.5, 3.5, 4.5),c(3.5, 4.5, 5, 5))
+FecundVar <-list(c(0, 0, 109314, 1500000),c(109314, 1500000, 3500000), c(1500000, 3500000, 47700000), c(3500000, 47700000, 50000000, 50000000))
+MicroVar <-list(c(0,0,25,50),c(25,50,100),c(75,100,120),c(100,125,500,500))
+MacroVar <-list(c(0,0,10,20),c(10,20,40),c(25,40,50),c(40,50,201,201))
+
+#CLIMATE CHANGE Fuzzy Variables
+#Low, moderate, high, very high
+RepFreqVar <-list(c(0, 0, 1, 2),c(1, 2, 3), c(2, 3, 4),  c(3, 4, 5, 5)) #once/lifetime (1), once/year (2), several/year(3), year-round(4)
+
+SalinityVar <- list(c(0, 0, 2, 3), c(2, 3, 5), c(3, 5, 28), c(5, 28, 30, 30))
+TempVar<-list(c(0, 0, 8, 12),c(8, 12, 17),c(12,17,25),c(17,25,50,50))
+pO2Var <- list(c(0,0,141,183), c(141, 183, 187), c(183,187,215), c(187,215,250,250))
+NitrateVar <- list(c(0,0,12,16), c(12, 16, 24), c(16,24,24.2), c(24,24.2,25,25))
+PhosVar <- list(c(0,0,0.9,1), c(0.9, 1, 1.5), c(1,1.5,2), c(1.5,2,2.5,2.5))
+FeedVar<- list(c(1, 1, 1.5, 2.5),c(1.5, 2.5, 3.5),c(2.5, 3.5, 4.5),c(3.5, 4.5, 5, 5))
+
+#1-Fish, 2-crustaceans, 3-molluscs, 4-seaweed
+pHSenvar<- list( c(0.75, 0, 0, 0.75), c(0.25,0.25,0,0.25), c(0,0.5,0.25,0), c(0,0.25,0.75,0)) 
+CseqVar <- list( c(1, 1, 0.25, 0), c(0, 0, 0.25, 0.25), c(0, 0, 0.25, 0.5), c(0, 0, 0.25, 0.25))
+OAbufferVar <- list( c(1, 1, 1, 0), c(0, 0, 0, 0.5), c(0, 0, 0, 0.25), c(0, 0, 0, 0.25))
+
+#BIODIVERSITY Fuzzy Variables
+#Low, moderate, high, very high
+FecundVar <-list(c(0, 0, 109314, 1500000),c(109314, 1500000, 3500000), c(1500000, 3500000, 47700000), c(3500000, 47700000, 50000000, 50000000)) 
+GrowthVar<-list(c(0,0,0.2,0.3),c(0.2,0.3,0.5),c(0.3,0.5,2),c(0.5,2,2.5, 2.5)) 
+AggressVar<-list(c(1, 1, 1.5, 2.5),c(1.5, 2.5, 3.5),c(2.5, 3.5, 4.5),c(3.5, 4.5, 5, 5))
+FeedVar<- list(c(1, 1, 1.5, 2.5),c(1.5, 2.5, 3.5),c(2.5, 3.5, 4.5),c(3.5, 4.5, 5, 5))
+LatrangeVar <-list(c(0, 0, 56, 82), c(56, 82, 196), c(82,196, 359) ,c(196, 359, 400, 400))
+GeograngeVar <-list(c(0, 0, 903879, 2000000), c(903879, 2000000, 7840540), c(2000000, 7840540, 20356868) ,c(7840540, 20356868, 20500000, 20500000))
+
+#1-Fish, 2-crustaceans, 3-molluscs, 4-seaweed
+BioremedVar <-list(c(1, 1, 0.25, 0.25), c(0, 0, 0.5, 0.5), c(0, 0, 0.25, 0.25) ,c(0, 0, 0, 0)) 
+StructuralVar <- list(c(1, 1, 0, 0), c(0, 0, 0.5, 0.25), c(0, 0, 0.25, 0.25) ,c(0, 0, 0.25, 0.5))
+
+
+#TEST
+# print(Trait_4_levels(3.7, FeedVar, 1))
+```
+
+```{r}
+#set limit of 100 for spatial behavior
+for (i in 1:length(foodtraits$spatial)) {
+  ifelse(foodtraits$spatial[i]>100, foodtraits$spatial[i]<-100, foodtraits$spatial)
+}
+```
+FUNCTIONS
+```{r}
+#defining triangle function with two inputs, the data and the low/mod/high value: (data, xlow)
+#xlow is xlow<-fuzzyvar[[1]], the second input into the exposure function--fuzzyvar. Which is a list like: variable <-list(c(0,0,0.5,1),c(0.5,1,2),c(1,2,3),c(2,3,1000,10000))
+
+triangle<-function(x,xx){ #(data, list)
+  a<-xx[1]
+  b<-xx[2]
+  c<-xx[3]
+  
+  temp=array(NA,length(x))
+  temp[is.na(x)]<-0 #turns NA to 0
+  temp[x<=a & !is.na(x)]=0
+  temp[x>a & x<=b & !is.na(x)]=(x[x>a & x<=b & !is.na(x)]-a)/(b-a)
+  temp[x>b & x<=c & !is.na(x)]=(c-x[x>b & x<=c & !is.na(x)])/(c-b)
+  temp[x>c & !is.na(x)]=0
+  triangle=temp
+}
+```
+
+```{r}
+#trapezoid function with two inputs
+trapezoid<-function(x,xx){ #(data, list)
+  a<-xx[1]
+  b<-xx[2]
+  c<-xx[3]
+  d<-xx[4]
+  temp=array(NA,length(x))
+  temp[is.na(x)]<-0
+  temp[x<=a & !is.na(x)]=0
+  temp[x>a & x<b & !is.na(x)]=(x[x>a & x<b & !is.na(x)]-a)/(b-a)
+  temp[x>=b & x<c & !is.na(x)]=1
+  temp[x>=c & x<d & !is.na(x)]=(d-x[x>=c & x<d & !is.na(x)])/(d-c)
+  temp[x>=d & !is.na(x)]=0
+  trapezoid=temp
+}
+```
+
+ACCUMULATION FUNCTION (MYCIN)
+#Accumulate the degree of membership associated with each level of conclusions from the rules using an algorithm called MYCIN
+
+```{r}
+#turns NA into 0
+
+MYCIN<-function(level_values){
+  n<-length(level_values)
+  for (j in 1:length(level_values)){
+    if (is.na(level_values[j]) ==TRUE ) {
+    level_values[j] <- 0
+}
+}
+  temp=level_values[1] #start with the first membership value
+  if(n>1){ #if there are multiple membership values
+    for(i in 2:n){ #start adding from the second value
+      temp=temp+level_values[i]*(1-temp) #add them according to the accumulation function
+    }
+  }
+  MYCIN=temp
+}
+
+#TEST
+# level_values <- c(0.3, 0.2, 0.5, NA)
+# a<- MYCIN(level_values)
+# a
+```
+
+FUNCTIONS for FUZZIFICATION OF VARIABLES: low, medium, high for each trait
+```{r function with four levels: low, med, high, very high}
+#Example of fuzzyvar is var<-list(c(0,0,0.5,1),c(0.5,1,2),c(1,2,3),c(2,3,1000,10000))
+
+Trait_4_levels<-function(data,fuzzyvar,wg){
+#fuzzify exposure variables  
+  xlow<-fuzzyvar[[1]] #grabs the first list, (0,0,0.5,1)
+  xmod<-fuzzyvar[[2]] #grabs the second list
+  xhigh<-fuzzyvar[[3]]
+  xvhigh<-fuzzyvar[[4]]
+  fuzzylow<-trapezoid(data,xlow)*wg #fuzzylow is now the name of the trapezoid function with the low values
+  fuzzymod<-triangle(data,xmod)*wg
+  fuzzyhigh<-triangle(data,xhigh)*wg
+  fuzzyVhigh<-trapezoid(data,xvhigh)*wg
+  # Trait_4_levels<-list(fuzzylow,fuzzymod,fuzzyhigh,fuzzyVhigh)
+  Trait_4_levels<-c(fuzzylow,fuzzymod,fuzzyhigh,fuzzyVhigh)
+}
+#modified
+```
+
+TEST
+```{r}
+fuzzyvar<-list(c(0,0,0.5,1),c(0.5,1,2),c(1,2,3),c(2,3,1000,10000))
+
+weighfactor=1
+
+print(Trait_4_levels(0.7, fuzzyvar, weighfactor))
+
+#TEST with macron and micron, which sometimes return NA?
+
+print(Trait_4_levels(157, MacroVar, weighfactor))
+```
+
+```{r}
+#four level traits that are opposite: xlow (meaning low potential) will grab the last list in each of the fuzzy variables
+
+Trait_4_levels_opp<-function(data,fuzzyvar,wg){
+#fuzzify exposure variables  
+  xlow<-fuzzyvar[[4]] #grabs the fourth list
+  xmod<-fuzzyvar[[3]] #grabs the third list
+  xhigh<-fuzzyvar[[2]]
+  xvhigh<-fuzzyvar[[1]]
+  fuzzylow<-trapezoid(data,xlow)*wg #fuzzylow is now the name of the trapezoid function with the low values
+  fuzzymod<-triangle(data,xmod)*wg
+  fuzzyhigh<-triangle(data,xhigh)*wg
+  fuzzyVhigh<-trapezoid(data,xvhigh)*wg
+  Trait_4_levels_opp<-c(fuzzylow,fuzzymod,fuzzyhigh,fuzzyVhigh)
+  
+  # Trait_4_levels_opp[is.na(Trait_4_levels)] <- 0 #turn NAs into 0
+}
+```
+
+```{r}
+#sensitivity to PH function 
+#1-Fish, 2-crustaceans, 3-molluscs, 4-seaweed
+# pHSenvar<- list( c(0.75, 0, 0, 0.75), c(0.25,0.25,0,0.5), c(0,0.5,0.25,0), c(0,0.25,0.75,0))
+#later gets turned into: SenpH<-sensitivity_pH(sppdata$PH_sensitivity_taxa,pHSenvar,weighfactor)
+
+sensitivity_pH<-function(taxon,fuzzyvar,wg){
+#fuzzify pH sensitivity 
+  fuzzylow<-fuzzyvar[[4]][taxon]*wg #opposite: high sensitivity list corresponds with the low potential fuzzy set
+  fuzzymod<-fuzzyvar[[3]][taxon]*wg #index the list, selecting the correct value based on which taxon the species is
+  fuzzyhigh<-fuzzyvar[[2]][taxon]*wg
+  fuzzyVhigh<-fuzzyvar[[1]][taxon]*wg
+  sensitivity_pH<-c(fuzzylow,fuzzymod,fuzzyhigh,fuzzyVhigh)
+}
+```
+
+```{r}
+#carbon sequestration potential function
+#1-Fish, 2-crustaceans, 3-molluscs, 4-seaweed
+# CseqVar <- list( c(0.75, 0.75, 0.25, 0), c(0, 0, 0.75, 0.25), c(0, 0, 0.5, 0.75), c(0, 0, 0.25, 0.5))
+#later gets turned into: Cseq <-cseq_potential(sppdata$c_seq,cseqVar,weighfactor)
+
+cseq_potential<-function(taxon,fuzzyvar,wg){
+#fuzzify
+  fuzzylow<-fuzzyvar[[1]][taxon]*wg
+  fuzzymod<-fuzzyvar[[2]][taxon]*wg
+  fuzzyhigh<-fuzzyvar[[3]][taxon]*wg
+  fuzzyVhigh<-fuzzyvar[[4]][taxon]*wg
+  cseq_potential<-c(fuzzylow,fuzzymod,fuzzyhigh,fuzzyVhigh)
+}
+```
+
+```{r}
+#OA buffering potential function
+#1-Fish, 2-crustaceans, 3-molluscs, 4-seaweed
+# OAbufferVar <- list( c(0.75, 0.75, 0.75, 0.25), c(0, 0, 0, 0.25), c(0, 0, 0, 0.75), c(0, 0, 0, 0.5))
+#later used as: OAbuffer <- OAbuffer_potential(sppdata$OA_buff,OAbufferVar,weighfactor)
+
+OAbuffer_potential<-function(taxon,fuzzyvar,wg){
+#fuzzify
+  fuzzylow<-fuzzyvar[[1]][taxon]*wg
+  fuzzymod<-fuzzyvar[[2]][taxon]*wg
+  fuzzyhigh<-fuzzyvar[[3]][taxon]*wg
+  fuzzyVhigh<-fuzzyvar[[4]][taxon]*wg
+  OAbuffer_potential<-c(fuzzylow,fuzzymod,fuzzyhigh,fuzzyVhigh)
+}
+```
+
+```{r}
+#Bioremediation potential function
+#1-Fish, 2-crustaceans, 3-molluscs, 4-seaweed
+# BioremedVar <-list(c(0.75, 0.75, 0.25, 0.25), c(0, 0, 0.5, 0.5), c(0, 0, 0.75, 0.75) ,c(0, 0, 0.25, 0.25))
+#later used as: Bioremed <- bioremed_potential(sppdata$bioremed,OAbufferVar,weighfactor)
+
+bioremed_potential<-function(taxon,fuzzyvar,wg){
+#fuzzify
+  fuzzylow<-fuzzyvar[[1]][taxon]*wg
+  fuzzymod<-fuzzyvar[[2]][taxon]*wg
+  fuzzyhigh<-fuzzyvar[[3]][taxon]*wg
+  fuzzyVhigh<-fuzzyvar[[4]][taxon]*wg
+  bioremed_potential<-c(fuzzylow,fuzzymod,fuzzyhigh,fuzzyVhigh)
+}
+```
+
+```{r}
+#Struture-providing potential function
+#1-Fish, 2-crustaceans, 3-molluscs, 4-seaweed
+# StructuralVar <- list(c(0.75, 0.75, 0.25, 0.25), c(0, 0, 0.5, 0.5), c(0, 0, 0.75, 0.75) ,c(0, 0, 0.25, 0.25))
+#later used as: structure <- structure_provision(sppdata$structure,StructuralVar,weighfactor)
+
+structure_provision<-function(taxon,fuzzyvar,wg){
+#fuzzify
+  fuzzylow<-fuzzyvar[[1]][taxon]*wg
+  fuzzymod<-fuzzyvar[[2]][taxon]*wg
+  fuzzyhigh<-fuzzyvar[[3]][taxon]*wg
+  fuzzyVhigh<-fuzzyvar[[4]][taxon]*wg
+  structure_provision<-c(fuzzylow,fuzzymod,fuzzyhigh,fuzzyVhigh)
+}
+```
+
+
+```{r}
+#FOOD SECURITY
+# the weighting factor
+weighfactor=0.5
+
+foodtraits$abs_fecundity<- as.numeric(foodtraits$abs_fecundity)
+str(foodtraits$abs_fecundity)
+
+foodtraits[is.na(foodtraits)] <-0
+
+food_long <- foodtraits %>% pivot_longer(!c('species', 'year'), names_to = 'variable', values_to = 'value') %>% ungroup()
+
+food_long$low <- NA
+food_long$med <- NA
+food_long$high <- NA
+food_long$vhigh <- NA
+
+#Opposite traits:
+# - aggression/trophic
+# - age at maturity
+# - feed conversion efficiency/trophic]
+
+food_long <- food_long %>% rowwise() %>% mutate(
+  low = case_when(variable == 'agg_trophic' ~ Trait_4_levels_opp(value, AggressVar, weighfactor)[1], #opp
+                  variable == 'spatial' ~ Trait_4_levels(value, SpatialVar, weighfactor)[1],
+                  variable == 'temp_range_c' ~ Trait_4_levels(value, TempVar, weighfactor)[1],
+                  variable == "pO2_min_mbar" ~ Trait_4_levels(value, pO2Var, weighfactor)[1],
+                  variable == "N_range_µmol.kg" ~ Trait_4_levels(value, NitrateVar, weighfactor)[1],
+                  variable == "P_range_µmol.kg" ~ Trait_4_levels(value, PhosVar, weighfactor)[1],
+                  variable == 'growth_rate_K' ~ Trait_4_levels(value, GrowthVar, weighfactor)[1],
+                  variable == "max_size_cm" ~ Trait_4_levels(value, SizeVar, weighfactor)[1],
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[1], #opp
+                  variable == 'abs_fecundity' ~ Trait_4_levels(value, FecundVar, weighfactor)[1],
+                  variable == 'micron' ~ Trait_4_levels(value, MicroVar, weighfactor)[1],
+                  variable == 'macron' ~ Trait_4_levels(value, MacroVar, weighfactor)[1]),
+  
+    med = case_when(variable == 'agg_trophic' ~ Trait_4_levels_opp(value, AggressVar, weighfactor)[2], #opp
+                  variable == 'spatial' ~ Trait_4_levels(value, SpatialVar, weighfactor)[2],
+                  variable == 'temp_range_c' ~ Trait_4_levels(value, TempVar, weighfactor)[2],
+                  variable == "pO2_min_mbar" ~ Trait_4_levels(value, pO2Var, weighfactor)[2],
+                  variable == "N_range_µmol.kg" ~ Trait_4_levels(value, NitrateVar, weighfactor)[2],
+                  variable == "P_range_µmol.kg" ~ Trait_4_levels(value, PhosVar, weighfactor)[2],
+                  variable == 'growth_rate_K' ~ Trait_4_levels(value, GrowthVar, weighfactor)[2],
+                  variable == "max_size_cm" ~ Trait_4_levels(value, SizeVar, weighfactor)[2],
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[2], #opp
+                  variable == 'abs_fecundity' ~ Trait_4_levels(value, FecundVar, weighfactor)[2], #opp
+                  variable == 'micron' ~ Trait_4_levels(value, MicroVar, weighfactor)[2],
+                  variable == 'macron' ~ Trait_4_levels(value, MacroVar, weighfactor)[2]),
+  
+    high = case_when(variable == 'agg_trophic' ~ Trait_4_levels_opp(value, AggressVar, weighfactor)[3], #opp
+                  variable == 'spatial' ~ Trait_4_levels(value, SpatialVar, weighfactor)[3],
+                  variable == 'temp_range_c' ~ Trait_4_levels(value, TempVar, weighfactor)[3],
+                  variable == "pO2_min_mbar" ~ Trait_4_levels(value, pO2Var, weighfactor)[3],
+                  variable == "N_range_µmol.kg" ~ Trait_4_levels(value, NitrateVar, weighfactor)[3],
+                  variable == "P_range_µmol.kg" ~ Trait_4_levels(value, PhosVar, weighfactor)[3],
+                  variable == 'growth_rate_K' ~ Trait_4_levels(value, GrowthVar, weighfactor)[3],
+                  variable == "max_size_cm" ~ Trait_4_levels(value, SizeVar, weighfactor)[3],
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[3], #opp
+                  variable == 'abs_fecundity' ~ Trait_4_levels(value, FecundVar, weighfactor)[3], 
+                  variable == 'micron' ~ Trait_4_levels(value, MicroVar, weighfactor)[3],
+                  variable == 'macron' ~ Trait_4_levels(value, MacroVar, weighfactor)[3]),
+  
+    vhigh = case_when(variable == 'agg_trophic' ~ Trait_4_levels_opp(value, AggressVar, weighfactor)[4], #opp
+                  variable == 'spatial' ~ Trait_4_levels(value, SpatialVar, weighfactor)[4],
+                  variable == 'temp_range_c' ~ Trait_4_levels(value, TempVar, weighfactor)[4],
+                  variable == "pO2_min_mbar" ~ Trait_4_levels(value, pO2Var, weighfactor)[4],
+                  variable == "N_range_µmol.kg" ~ Trait_4_levels(value, NitrateVar, weighfactor)[4],
+                  variable == "P_range_µmol.kg" ~ Trait_4_levels(value, PhosVar, weighfactor)[4],
+                  variable == 'growth_rate_K' ~ Trait_4_levels(value, GrowthVar, weighfactor)[4],
+                  variable == "max_size_cm" ~ Trait_4_levels(value, SizeVar, weighfactor)[4],
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[4], #opp
+                  variable == 'abs_fecundity' ~ Trait_4_levels(value, FecundVar, weighfactor)[4], 
+                  variable == 'micron' ~ Trait_4_levels(value, MicroVar, weighfactor)[4],
+                  variable == 'macron' ~ Trait_4_levels(value, MacroVar, weighfactor)[4])
+  
+)
+
+#penalize NA (currently appears in data as 0) for "opposite traits" where a low value would result in high potential
+food_long2 <- food_long %>%
+  mutate(
+    low   = if_else(value == 0, 0.5, low),
+    vhigh = if_else(value == 0, 0, vhigh)
+  )
+
+#ACCUMULATE THE SCORES USING MYCIN
+
+food_long2 <- food_long2 %>% pivot_longer(cols = c('low', 'med', 'high', 'vhigh'), names_to = 'level', values_to = 'level_val') %>% ungroup()
+
+#add the <0.2 membership clause here
+food_long2$level_val[food_long2$level_val <0.1] <- 0
+
+food_long2$level_val <- unlist(food_long2$level_val)
+scores <- food_long2 %>% group_by(species, year, level) %>% summarise(score = MYCIN(level_val))
+
+#NOW DEFUZZ to get a practical index (one number from 1 to 100), using the weighted-centroid method: 
+# **(centroid of level*membership to level)/(sum of all memberships)**
+# calculated from the average values with maximum membership of each output fuzzy membership function weighted by the membership associated with each conclusion
+
+#Defuzzification index
+defuzz<-c(0,25,75,100) #These are the midpoints (the maximum value of membership?) of low, med, high, v high
+
+#shift the dataframe back to long: species, low, high are the columns
+scores2 <- scores %>% pivot_wider(names_from = level, values_from = score)
+
+#create new index with the low, med, high etc for each species
+  for (i in 1:length(scores2$species)){
+  levels_index <- c(scores2$low[i], scores2$med[i], scores2$high[i], scores2$vhigh[i])
+  sum_memberships <- sum(scores2$low[i], scores2$med[i], scores2$high[i], scores2$vhigh[i])
+  # print(levels_index)
+  # print(sum_memberships)
+  scores2$final[i] <-sum(levels_index*defuzz)/sum_memberships #new column in scores: takes the new index and multiplies it with the defuzz index
+  
+  }
+
+#save this as food set
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Revisions January 2025/Comparing old and new/Fscores_withyearly.csv")
+# write.csv(scores2,file=NAME)
+```
+
+#######CLIMATE
+
+
+```{r}
+###CLIMATE CHANGE
+
+weighfactor=0.5
+
+climate_long <- climatetraits %>% pivot_longer(!c('species', 'year'), names_to = 'variable', values_to = 'value') %>% ungroup()
+climate_long$low <- NA
+climate_long$med <- NA
+climate_long$high <- NA
+climate_long$vhigh <- NA
+
+climate_long <- climate_long %>% rowwise() %>% mutate(
+  low = case_when(variable == 'rep_freq_year' ~ Trait_4_levels(value, RepFreqVar, weighfactor)[1], 
+                  variable == 'sal_range' ~ Trait_4_levels(value, SalinityVar, weighfactor)[1],
+                  variable == 'temp_range_c' ~ Trait_4_levels(value, TempVar, weighfactor)[1],
+                  variable == "pO2_min_mbar" ~ Trait_4_levels(value, pO2Var, weighfactor)[1],
+                  variable == "N_range_µmol.kg" ~ Trait_4_levels(value, NitrateVar, weighfactor)[1],
+                  variable == "P_range_µmol.kg" ~ Trait_4_levels(value, PhosVar, weighfactor)[1],
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[1], #opp
+                  variable == 'PH_sensitivity_taxa' ~ sensitivity_pH(value, pHSenvar, weighfactor)[1], #ph sens function
+                  variable == 'c_seq' ~ cseq_potential(value, CseqVar, weighfactor)[1], #cseq function
+                  variable == 'OA_buff' ~ OAbuffer_potential(value, OAbufferVar, weighfactor)[1]), #OA buffer function
+  
+   med = case_when(variable == 'rep_freq_year' ~ Trait_4_levels(value, RepFreqVar, weighfactor)[2], 
+                  variable == 'sal_range' ~ Trait_4_levels(value, SalinityVar, weighfactor)[2],
+                  variable == 'temp_range_c' ~ Trait_4_levels(value, TempVar, weighfactor)[2],
+                  variable == "pO2_min_mbar" ~ Trait_4_levels(value, pO2Var, weighfactor)[2],
+                  variable == "N_range_µmol.kg" ~ Trait_4_levels(value, NitrateVar, weighfactor)[2],
+                  variable == "P_range_µmol.kg" ~ Trait_4_levels(value, PhosVar, weighfactor)[2],
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[2], #opp
+                  variable == 'PH_sensitivity_taxa' ~ sensitivity_pH(value, pHSenvar, weighfactor)[2], #ph sens function
+                  variable == 'c_seq' ~ cseq_potential(value, CseqVar, weighfactor)[2], #cseq function
+                  variable == 'OA_buff' ~ OAbuffer_potential(value, OAbufferVar, weighfactor)[2]), #OA buffer function 
+  
+  high = case_when(variable == 'rep_freq_year' ~ Trait_4_levels(value, RepFreqVar, weighfactor)[3], 
+                  variable == 'sal_range' ~ Trait_4_levels(value, SalinityVar, weighfactor)[3],
+                  variable == 'temp_range_c' ~ Trait_4_levels(value, TempVar, weighfactor)[3],
+                  variable == "pO2_min_mbar" ~ Trait_4_levels(value, pO2Var, weighfactor)[3],
+                  variable == "N_range_µmol.kg" ~ Trait_4_levels(value, NitrateVar, weighfactor)[3],
+                  variable == "P_range_µmol.kg" ~ Trait_4_levels(value, PhosVar, weighfactor)[3],
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[3], #opp
+                  variable == 'PH_sensitivity_taxa' ~ sensitivity_pH(value, pHSenvar, weighfactor)[3], #ph sens function
+                  variable == 'c_seq' ~ cseq_potential(value, CseqVar, weighfactor)[3], #cseq function
+                  variable == 'OA_buff' ~ OAbuffer_potential(value, OAbufferVar, weighfactor)[3]), #OA buffer function  
+  
+    vhigh = case_when(variable == 'rep_freq_year' ~ Trait_4_levels(value, RepFreqVar, weighfactor)[4], 
+                  variable == 'sal_range' ~ Trait_4_levels(value, SalinityVar, weighfactor)[4],
+                  variable == 'temp_range_c' ~ Trait_4_levels(value, TempVar, weighfactor)[4],
+                  variable == "pO2_min_mbar" ~ Trait_4_levels(value, pO2Var, weighfactor)[4],
+                  variable == "N_range_µmol.kg" ~ Trait_4_levels(value, NitrateVar, weighfactor)[4],
+                  variable == "P_range_µmol.kg" ~ Trait_4_levels(value, PhosVar, weighfactor)[4],
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[4], #opp
+                  variable == 'PH_sensitivity_taxa' ~ sensitivity_pH(value, pHSenvar, weighfactor)[4], #ph sens function
+                  variable == 'c_seq' ~ cseq_potential(value, CseqVar, weighfactor)[4], #cseq function
+                  variable == 'OA_buff' ~ OAbuffer_potential(value, OAbufferVar, weighfactor)[4]) #OA buffer function
+  
+)
+
+#penalize NA (currently appears in data as 0) for "opposite traits" where a low value would result in high potential
+climatelong2 <- climate_long %>%
+  mutate(
+    low   = if_else(value == 0, 0.5, low),
+    vhigh = if_else(value == 0, 0, vhigh)
+  )
+
+#ACCUMULATE THE SCORES USING MYCIN
+
+climatelong2 <- climate_long %>% pivot_longer(cols = c('low', 'med', 'high', 'vhigh'), names_to = 'level', values_to = 'level_val') %>% ungroup()
+
+climatelong2$level_val[climatelong2$level_val <0.1] <- 0
+
+climatelong2$level_val <- unlist(climatelong2$level_val)
+scores <- climatelong2 %>% group_by(species, year, level) %>% summarise(score = MYCIN(level_val))
+
+#NOW DEFUZZ to get a practical index (one number from 1 to 100), using the weighted-centroid method: 
+# **(centroid of level*membership to level)/(sum of all memberships)**
+# calculated from the average values with maximum membership of each output fuzzy membership function weighted by the membership associated with each conclusion
+
+#Defuzzification index
+defuzz<-c(0,25,75,100) #These are the midpoints (the maximum value of membership?) of low, med, high, v high
+
+#shift the dataframe back to long: species, low, high are the columns
+scores2 <- scores %>% pivot_wider(names_from = level, values_from = score)
+
+#create new index with the low, med, high etc for each species
+  for (i in 1:length(scores2$species)){
+  levels_index <- c(scores2$low[i], scores2$med[i], scores2$high[i], scores2$vhigh[i])
+  sum_memberships <- sum(scores2$low[i], scores2$med[i], scores2$high[i], scores2$vhigh[i])
+  # print(levels_index)
+  # print(sum_memberships)
+  scores2$final[i] <-sum(levels_index*defuzz)/sum_memberships #new column in scores: takes the new index and multiplies it with the defuzz index
+  
+  }
+
+#save this as climate set
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Revisions January 2025/Comparing old and new/Cscores_withyearly.csv")
+# write.csv(scores2,file=NAME)
+
+```
+
+######BIODIV
+```{r}
+weighfactor=0.5
+
+biodiv_long <- biodivtraits %>% pivot_longer(!c('species', 'year'), names_to = 'variable', values_to = 'value') %>% ungroup()
+biodiv_long$low <- NA
+biodiv_long$med <- NA
+biodiv_long$high <- NA
+biodiv_long$vhigh <- NA
+
+biodiv_long <- biodiv_long %>% rowwise() %>% mutate(
+  low = case_when(variable == 'lat_range_degrees' ~ Trait_4_levels_opp(value, LatrangeVar, weighfactor)[1], #opp
+                  variable == 'geog_range_km2' ~ Trait_4_levels_opp(value, GeograngeVar, weighfactor)[1], #opp
+                  variable == 'abs_fecundity' ~ Trait_4_levels_opp(value, FecundVar, weighfactor)[1], #opp
+                  variable == "growth_rate_K" ~ Trait_4_levels_opp(value, GrowthVar, weighfactor)[1], #opp
+                  variable == "agg_trophic" ~ Trait_4_levels_opp(value, AggressVar, weighfactor)[1], #opp
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[1], #opp
+                  variable == 'bioremed' ~ bioremed_potential(value, BioremedVar, weighfactor)[1], #bioremed function
+                  variable == 'structure' ~ structure_provision(value, StructuralVar, weighfactor)[1]), #structure function
+
+  med = case_when(variable == 'lat_range_degrees' ~ Trait_4_levels_opp(value, LatrangeVar, weighfactor)[2], #opp
+                  variable == 'geog_range_km2' ~ Trait_4_levels_opp(value, GeograngeVar, weighfactor)[2], #opp
+                  variable == 'abs_fecundity' ~ Trait_4_levels_opp(value, FecundVar, weighfactor)[2], #opp
+                  variable == "growth_rate_K" ~ Trait_4_levels_opp(value, GrowthVar, weighfactor)[2], #opp
+                  variable == "agg_trophic" ~ Trait_4_levels_opp(value, AggressVar, weighfactor)[2], #opp
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[2], #opp
+                  variable == 'bioremed' ~ bioremed_potential(value, BioremedVar, weighfactor)[2], #bioremed function
+                  variable == 'structure' ~ structure_provision(value, StructuralVar, weighfactor)[2]), #structure function
+  
+   high = case_when(variable == 'lat_range_degrees' ~ Trait_4_levels_opp(value, LatrangeVar, weighfactor)[3], #opp
+                  variable == 'geog_range_km2' ~ Trait_4_levels_opp(value, GeograngeVar, weighfactor)[3], #opp
+                  variable == 'abs_fecundity' ~ Trait_4_levels_opp(value, FecundVar, weighfactor)[3], #opp
+                  variable == "growth_rate_K" ~ Trait_4_levels_opp(value, GrowthVar, weighfactor)[3], #opp
+                  variable == "agg_trophic" ~ Trait_4_levels_opp(value, AggressVar, weighfactor)[3], #opp
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[3], #opp
+                  variable == 'bioremed' ~ bioremed_potential(value, BioremedVar, weighfactor)[3], #bioremed function
+                  variable == 'structure' ~ structure_provision(value, StructuralVar, weighfactor)[3]), #structure function
+   
+   vhigh = case_when(variable == 'lat_range_degrees' ~ Trait_4_levels_opp(value, LatrangeVar, weighfactor)[4], #opp
+                  variable == 'geog_range_km2' ~ Trait_4_levels_opp(value, GeograngeVar, weighfactor)[4], #opp
+                  variable == 'abs_fecundity' ~ Trait_4_levels_opp(value, FecundVar, weighfactor)[4], #opp
+                  variable == "growth_rate_K" ~ Trait_4_levels_opp(value, GrowthVar, weighfactor)[4], #opp
+                  variable == "agg_trophic" ~ Trait_4_levels_opp(value, AggressVar, weighfactor)[4], #opp
+                  variable == 'feed_eff_trophic' ~ Trait_4_levels_opp(value, FeedVar, weighfactor)[4], #opp
+                  variable == 'bioremed' ~ bioremed_potential(value, BioremedVar, weighfactor)[4], #bioremed function
+                  variable == 'structure' ~ structure_provision(value, StructuralVar, weighfactor)[4]) #structure function
+)
+
+#penalize NA (currently appears in data as 0) for "opposite traits" where a low value would result in high potential
+biodiv_long2 <- biodiv_long %>%
+  mutate(
+    low   = if_else(value == 0, 0.5, low),
+    vhigh = if_else(value == 0, 0, vhigh)
+  )
+
+#ACCUMULATE THE SCORES USING MYCIN
+
+biodivlong2 <- biodiv_long %>% pivot_longer(cols = c('low', 'med', 'high', 'vhigh'), names_to = 'level', values_to = 'level_val') %>% ungroup()
+
+#add the <0.2 membership clause here
+biodivlong2$level_val[biodivlong2$level_val <0.1] <- 0
+
+biodivlong2$level_val <- unlist(biodivlong2$level_val)
+scores <- biodivlong2 %>% group_by(species, year, level) %>% summarise(score = MYCIN(level_val))
+
+#NOW DEFUZZ to get a practical index (one number from 1 to 100), using the weighted-centroid method: 
+# **(centroid of level*membership to level)/(sum of all memberships)**
+# calculated from the average values with maximum membership of each output fuzzy membership function weighted by the membership associated with each conclusion
+
+#Defuzzification index
+defuzz<-c(0,25,75,100) #These are the midpoints (the maximum value of membership?) of low, med, high, v high
+
+#shift the dataframe back to long: species, low, high are the columns
+scores2 <- scores %>% pivot_wider(names_from = level, values_from = score)
+
+#create new index with the low, med, high etc for each species
+  for (i in 1:length(scores2$species)){
+  levels_index <- c(scores2$low[i], scores2$med[i], scores2$high[i], scores2$vhigh[i])
+  sum_memberships <- sum(scores2$low[i], scores2$med[i], scores2$high[i], scores2$vhigh[i])
+  # print(levels_index)
+  # print(sum_memberships)
+  scores2$final[i] <-sum(levels_index*defuzz)/sum_memberships #new column in scores: takes the new index and multiplies it with the defuzz index
+  
+  }
+
+#save this as biodiv set
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Revisions January 2025/Comparing old and new/Bscores_withyearly.csv")
+# write.csv(scores2,file=NAME)
+```
+
+```{r}
+#combine the three numbers into one dataset with some of the other columns in sppdata
+
+Food <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Revisions January 2025/Comparing old and new/Fscores_withyearly.csv")
+# 
+# #TEST:
+# Food <- Food[, c("species", "final")] %>%
+#   rename(f = final)
+
+##OG:
+Food <- Food[, c("species", "year", "final")] %>%
+  rename(f = final)
+
+Climate <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Revisions January 2025/Comparing old and new/Cscores_withyearly.csv")
+Climate <- Climate[, c("species", "year", "final")] %>%
+  rename(c = final)
+
+# #TEST
+# Climate <- Climate[, c("species", "final")] %>%
+#   rename(c = final)
+
+Biodiversity <- read.csv("/Users/aleahw/Documents/Master's!!/Chapter_2/Revisions January 2025/Comparing old and new/Bscores_withyearly.csv")
+Biodiversity <- Biodiversity[, c("species", "year", "final")] %>%
+  rename(b = final)
+
+# #test
+# Biodiversity <- Biodiversity[, c("species", "final")] %>%
+#   rename(b = final)
+
+#isolate metadata from sppdata
+# metadata <- sppdata[, c(1:4, 8)] %>%
+#   distinct(species, year, .keep_all = TRUE)
+
+#TEST:
+metadata <- sppdata[, c(1:4, 6)]
+
+
+# ##TEST:
+# FCB <- merge(Food, Climate, by=c("species"))
+# FCB <- merge(FCB, Biodiversity, by=c("species"))
+# FCB <- FCB %>%
+#   left_join(metadata, by = c("species"))
+
+#OG CODE:
+FCB <- merge(Food, Climate, by=c("species", "year"))
+FCB <- merge(FCB, Biodiversity, by=c("species", "year"))
+FCB <- FCB %>%
+  left_join(metadata, by = c("species", "year"))
+```
+
+```{r}
+#rank by F
+FCB <- FCB %>%
+  group_by(year) %>%
+  mutate(rank_F = rank(-f))
+
+#rank by c
+FCB <- FCB %>%
+  group_by(year) %>%
+  mutate(rank_C = rank(-c))
+
+#rank by b
+FCB <- FCB %>%
+  group_by(year) %>%
+  mutate(rank_B = rank(-b))
+
+head(FCB)
+
+#save this: 
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Revisions January 2025/Comparing old and new/FCBraw.yearly.csv")
+# write.csv(FCB,file=NAME)
+
+#Pretty sure scores don't change across years. Check this, and if true, save a simpler file without the years
+changes <- FCB %>%
+  group_by(species) %>%
+  summarise(
+    f_changes = n_distinct(f, na.rm = TRUE) > 1,
+    c_changes = n_distinct(c, na.rm = TRUE) > 1,
+    b_changes = n_distinct(b, na.rm = TRUE) > 1,
+    .groups = "drop"
+  )
+
+#the scores are constant across all years...save a simpler file without the years
+
+new_FCB <- FCB %>%
+  group_by(species)%>%
+  summarize(
+    f = first(na.omit(f)),
+    c = first(na.omit(c)),
+    b = first(na.omit(b)),
+    .groups = "drop") %>%
+  mutate(
+    rank_F = rank(-f),
+    rank_C = rank(-c),
+    rank_B = rank(-b)
+  )
+    
+# NAME<- sprintf("/Users/aleahw/Documents/Master's!!/Chapter_2/Revisions January 2025/Comparing old and new/FCBrank.yearly.csv")
+# write.csv(new_FCB,file=NAME)
+```
+
